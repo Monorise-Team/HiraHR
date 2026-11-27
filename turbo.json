@@ -1,0 +1,30 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "globalEnv": ["HIRAHR_TEST_DATABASE_URL", "HIRAHR_TEST_APP_DATABASE_URL"],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
+    },
+    "lint": {
+      "dependsOn": ["^build"]
+    },
+    "typecheck": {
+      "dependsOn": ["^build"]
+    },
+    "test": {
+      "dependsOn": ["build"]
+    },
+    "dev": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "persistent": true
+    },
+    "@hirahr/db#typecheck": {
+      "dependsOn": ["^build", "build"]
+    },
+    "@hirahr/db#lint": {
+      "dependsOn": ["^build", "build"]
+    }
+  }
+}
