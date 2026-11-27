@@ -611,6 +611,26 @@ describe("umowy i stanowiska", () => {
     ).find((row) => row.employeeId === anna.employeeId);
     expect(annaRow).toMatchObject({ currentContractType: "INDEFINITE", currentPosition: { name: "Magazynierka" } });
 
+    // Umowę z wynagrodzeniem usunie tylko osoba z danymi wrażliwymi w zakresie firmy
+    const annaSalaryContract = await call(
+      contractsRoute.POST,
+      `/people/${anna.employeeId}/contracts`,
+      {
+        method: "POST",
+        token: await tokenFor(ewa),
+        body: { type: "MANDATE", startDate: "2019-01-01", endDate: "2019-06-30", salary: { amount: "3000" } },
+      },
+      { employeeId: anna.employeeId },
+    );
+    expect(annaSalaryContract.status).toBe(201);
+    const deleteWithoutSensitive = await call(
+      contractByIdRoute.DELETE,
+      `/contracts/${annaSalaryContract.body.data.id}`,
+      { method: "DELETE", token: kasiaToken },
+      { contractId: annaSalaryContract.body.data.id },
+    );
+    expect(deleteWithoutSensitive.status).toBe(403);
+
     const piotrSensitive = await call(
       sensitiveRoute.GET,
       `/people/${piotr.employeeId}/sensitive`,

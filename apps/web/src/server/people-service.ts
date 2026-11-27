@@ -622,7 +622,9 @@ export async function updateContract(caller: Caller, contractId: string, raw: un
 
 /** Usunięcie umowy wpisanej przez pomyłkę (historia zatrudnienia to kolejne umowy, nie zmiany jednej). */
 export async function deleteContract(caller: Caller, contractId: string): Promise<void> {
-  const { contract } = await loadContractContext(caller, contractId);
+  const { contract, context } = await loadContractContext(caller, contractId);
+  // Usunięcie umowy z wynagrodzeniem kasuje daną wrażliwą, więc wymaga tego samego co jej zmiana
+  assertSalaryAllowed(context, contract.salaryEncrypted !== null);
   await withUser(getDb(), caller, async (tx) => {
     await tx.employmentContract.delete({ where: { id: contract.id } });
     if (contract.salaryEncrypted) await appendAccessLog(tx, caller, contract.employeeId, "UPDATE", ["salary"]);
