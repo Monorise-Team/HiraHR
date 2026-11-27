@@ -1,0 +1,19 @@
+# Lokalna baza do pracy nad HiraHR:
+# - PostgreSQL (pnpm db:up, potem pnpm db:migrate) na porcie 5437, żeby nie zderzyć się z Core (5433), AvenMail (5434), TimoTime (5435) i KivoTasks (5436).
+# Kontener i wolumen mają przedrostek hira-hr (małe litery, wyrazy z myślnikiem).
+name: hira-hr
+
+services:
+  database:
+    container_name: hira-hr-database
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "127.0.0.1:5437:5432"
+    volumes:
+      - ./docker/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - hira-hr-postgres:/var/lib/postgresql/data
+
+volumes:
+  hira-hr-postgres:
