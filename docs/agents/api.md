@@ -19,6 +19,25 @@ API HiraHR działa pod ścieżką `/api/v1/*` na hoście `hira.monorise.studio` 
 
 Trasy logowania BFF (poza `/api/v1`, bez koperty JSON): `GET /api/auth/sign-in`, `GET /api/auth/callback`, `POST /api/auth/sign-out`.
 
+## Trasy etapu 1: kartoteka (ADR-0104)
+
+Listy mają stronicowanie kursorem (`limit` 1–100, `cursor` z `meta.nextCursor`). Osoba spoza zasięgu dostaje `404` (404 przed 403).
+
+| Metoda i ścieżka                                                 | Kto                                                                       | Opis                                                                                                                                                                                                                                       |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /api/v1/people`                                             | `employees.read`                                                          | Ludzie w zasięgu: zakres firmy daje wszystkich, zakres jednostek ich członków (członkostwa z katalogu Core), `RESOURCE` pojedyncze osoby. Filtry `search` (bez polskich znaków) i `unitId`. Obecna umowa i stanowisko. Awaria Core: `503`. |
+| `GET /api/v1/people/{employeeId}`                                | sama osoba albo `employees.read` w zasięgu                                | Karta: dane z Core, kartoteka, umowy bez wynagrodzeń, obecność danych wrażliwych i `access`.                                                                                                                                               |
+| `PATCH /api/v1/people/{employeeId}`                              | sama osoba albo `employees.update` w zasięgu                              | Zmiana kartoteki bez danych wrażliwych (pominięte pole bez zmian, `null` czyści).                                                                                                                                                          |
+| `GET /api/v1/people/{employeeId}/sensitive`                      | sama osoba albo `sensitive.read` w zakresie firmy                         | Odszyfrowany PESEL, rachunek, dokument i wynagrodzenia; odczyt trafia do dziennika.                                                                                                                                                        |
+| `PUT /api/v1/people/{employeeId}/sensitive`                      | `sensitive.update` w zakresie firmy                                       | PESEL (suma kontrolna), IBAN (mod 97), dokument; zmiana trafia do dziennika.                                                                                                                                                               |
+| `GET /api/v1/people/{employeeId}/sensitive-access-log`           | sama osoba albo `sensitive.read` w zakresie firmy                         | Kto i kiedy odczytał albo zmienił dane wrażliwe.                                                                                                                                                                                           |
+| `POST /api/v1/people/{employeeId}/contracts`                     | `employees.update` w zasięgu (wynagrodzenie: `sensitive.update` w firmie) | Nowa umowa; reguły: data końca dla próbnej i terminowej, etat tylko w umowach o pracę.                                                                                                                                                     |
+| `PATCH /api/v1/contracts/{contractId}`                           | jak wyżej                                                                 | Zmiana umowy; reguły sprawdzane po scaleniu zmian.                                                                                                                                                                                         |
+| `DELETE /api/v1/contracts/{contractId}`                          | `employees.update` w zasięgu                                              | Usunięcie umowy wpisanej przez pomyłkę.                                                                                                                                                                                                    |
+| `GET /api/v1/positions`                                          | dostęp do produktu                                                        | Katalog stanowisk (`includeArchived=true` także archiwalne).                                                                                                                                                                               |
+| `POST /api/v1/positions`, `PATCH /api/v1/positions/{positionId}` | `settings.manage`                                                         | Nowe stanowisko, zmiana nazwy, archiwizacja; aktywna nazwa unikalna w firmie (`409`).                                                                                                                                                      |
+| `GET /api/v1/units`                                              | sesja przeglądarki                                                        | Aktywne jednostki z Core (nazwy do filtrów).                                                                                                                                                                                               |
+
 ## Katalog tras i OpenAPI 3.1
 
 - Jednym źródłem prawdy dla OpenAPI jest `apps/web/src/server/routes.ts` połączony ze schematami Zod z `packages/contracts/src/index.ts`.
@@ -29,7 +48,8 @@ Trasy logowania BFF (poza `/api/v1`, bez koperty JSON): `GET /api/auth/sign-in`,
 ## Kontrakty i klient
 
 - `packages/contracts`: wspólne schematy Zod, `ApiErrorResponse`, `apiSuccessSchema`, `Health`, `Capabilities`, `Me` oraz `permissions.ts` (`HIRAHR_PERMISSIONS`, `HIRAHR_PERMISSION_MANIFEST`, `HIRAHR_ROLE_TEMPLATES`).
-- `packages/client`: `createClient({ baseUrl, getToken, fetch })` z metodami `session.me()` i `session.signOut()`, rzucający `ApiError` przy odpowiedziach błędów i błędach sieci.
+- `packages/contracts/src/people.ts`: schematy kartoteki, walidacja `isValidPesel`, `peselBirthDate`, `isValidIban`, `normalizeIban`, reguły umów `contractViolations`.
+- `packages/client`: `createClient({ baseUrl, getToken, fetch })` z metodami `session.*`, `people.*` (lista, karta, zmiana, dane wrażliwe, dziennik, nowa umowa), `contracts.*`, `positions.*` i `units.list()`; listy zwracają `{ items, nextCursor }`, a błędy `ApiError`.
 
 ## Zestawy testów
 
@@ -39,9 +59,11 @@ Testy bez bazy danych (działają z atrapą `createFakeCore` z `@monorise-team/t
 - `packages/client/test/client.test.ts`: klient HTTP, nagłówki, ciasteczka i mapowanie `ApiError`.
 - `apps/web/test/contract.test.ts`: kontrakt produktu Monorise (`defineProductContractTests`, `checkAuthentication`, `checkProductAccess`, spójność OpenAPI 3.1).
 - `apps/web/test/api.test.ts`: `/health`, `/me`, `capabilities`, błędy Core, PKCE `/api/auth/sign-in`, ochrona CSRF i odświeżanie po `authz_rev`.
-- `apps/web/test/permissions.test.ts`: role (`Członek HiraHR`, `Administrator HiraHR`, `Gość`, `Owner`), zakresy `ORGANIZATION`/`UNIT`/`RESOURCE`, `PRODUCT_ACCESS_REQUIRED`, pamięć podręczna i 503.
+- `apps/web/test/permissions.test.ts`: role (`Kierownik`, `Kadry`, `Gość`, `Owner`), dane wrażliwe tylko w zakresie firmy, zakresy `ORGANIZATION`/`UNIT`/`RESOURCE`, `PRODUCT_ACCESS_REQUIRED`, pamięć podręczna i 503.
 - `apps/web/test/core-machine.test.ts`, `core-registration.test.ts`, `core-resilience.test.ts`: token maszynowy, rejestracja manifestu i ról, ponawianie żądań i stronicowanie katalogu.
 - `apps/web/test/event-feed.test.ts`: odbiór zdarzeń z Core, deduplikacja, kursor i konfiguracja `HIRAHR_EVENT_FEED_INTERVAL_MS`.
 - `apps/web/test/hosts.test.ts`, `app-views.test.ts`: routing po hoście, parsowanie hashów i logika dostępu w powłoce.
 
-Testy wymagające PostgreSQL: `packages/db/test/rls.test.ts` oraz `apps/web/test/tenant-isolation.test.ts`.
+- `apps/web/test/people-helpers.test.ts`: szyfrowanie AES-256-GCM (kontekst AAD, podmiana szyfrogramu, wymiana klucza), zasięg kartotek, wyszukiwanie.
+
+Testy wymagające PostgreSQL: `packages/db/test/rls.test.ts` (także RLS, CHECK i dziennik tylko do dopisywania w tabelach kartoteki), `apps/web/test/tenant-isolation.test.ts` oraz `apps/web/test/people-api.test.ts` (trasy kartoteki na prawdziwych handlerach i bazie z atrapą Core).

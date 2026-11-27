@@ -30,6 +30,13 @@ Core jest źródłem tożsamości, pracowników, jednostek, przełożonych i wym
   - `getMachineCoreClient()`: token maszynowy OAuth 2.1 (`client_credentials`, zakresy `core:permissions.read core:directory.read core:events.read`), buforowany do 30 s przed wygaśnięciem z pojedynczym odświeżaniem w locie (`single-flight`).
   - Oba klienty ponawiają żądania przy krótkich błędach sieci i statusach `429`, `502`, `503`, `504` (`DEFAULT_CORE_RETRY`: 3 próby, 200 do 2000 ms). Przy trwałej awarii serwer odmawia bezpiecznie kodem `503` (fail-closed).
 
+## Kartoteka (etap 1)
+
+- **Katalog Core (`src/server/core-directory.ts`):** pracownicy i ich członkostwa w jednostkach z `directory/employees` i `directory/unit-members` (token maszynowy), w pamięci 60 s z jednym pobraniem naraz na firmę. Błąd Core daje `503` i nie trafia do pamięci (fail-closed), bo od członkostw zależy widoczność kartotek. Nazwy jednostek: `GET /core/v1/units` w imieniu osoby (tylko sesja przeglądarki).
+- **Dostęp (`src/server/people-access.ts`):** sama osoba zawsze widzi swoją kartę; `employees.read`/`update` obejmuje osobę przy zakresie firmy, przy zakresie jednostek, gdy osoba jest członkiem jednej z nich (poddrzewo z migawki), albo przy `RESOURCE` z jej `employeeId`. Dane wrażliwe: sama osoba (odczyt) albo `sensitive.*` w zakresie całej firmy.
+- **Serwisy:** `people-service.ts` (lista, karta, kartoteka, dane wrażliwe z dziennikiem, umowy, jednostki), `positions-service.ts`, `pagination.ts`.
+- **Interfejs:** `components/PeopleView.tsx` (lista z wyszukiwaniem i filtrem jednostki), `components/PersonView.tsx` (karta, także „Mój profil”) z `ContractsSection.tsx` i `SensitiveSection.tsx` (dane ukryte do kliknięcia „Pokaż”, dziennik), `components/PositionsView.tsx`; pomocnicze `people-ui.ts` i `api-errors.ts`. Trasy widoków: `#moj-profil`, `#ludzie`, `#osoba/<id>`, `#urlopy`, `#stanowiska`, `#wyglad`.
+
 ## Uprawnienia, role i kanał zdarzeń
 
 - **Deklaracja:** `packages/contracts/src/permissions.ts` (`definePermissions("hirahr", ...)`):
@@ -53,7 +60,7 @@ Core jest źródłem tożsamości, pracowników, jednostek, przełożonych i wym
 - Korzysta wyłącznie z `@monorise-team/ui` i tokenów `@monorise-team/tokens` (ADR-0091).
 - `HiraHRApp.tsx`: zarządza stanem sesji (`LoadingView`, `SignedOutView` z bezpiecznym powrotem `sanitizeReturnTo`, `LoadErrorView`, `NoAccessView`) i wyborem widoku z fragmentu URL (`app-views.ts`: `#moj-profil`, `#ludzie`, `#urlopy`, `#wyglad`). Do aplikacji wystarcza dostęp do produktu (samoobsługa).
 - `HiraHRShell.tsx`: `AppShell`, zwijany `SidebarShell`, paleta poleceń `⌘K` (`CommandPalette`), pomoc skrótów (`ShortcutsHelp` pod `?`) i skróty `g p` (Mój profil), `g l` (Ludzie), `g u` (Urlopy), `g w` (Wygląd).
-- W etapie 0 widoki „Mój profil”, „Ludzie” i „Urlopy” wyświetlają stan pusty z zapowiedzią etapów 1 i 2, a „Wygląd” (`AppearanceView.tsx`) udostępnia ustawienia motywu (`AppearanceControls`).
+- „Ludzie” widać z `employees.read`, „Stanowiska” z `settings.manage`; „Urlopy” to na razie zapowiedź etapu 2, a „Wygląd” (`AppearanceView.tsx`) udostępnia ustawienia motywu (`AppearanceControls`).
 
 ## Polecenia robocze
 
