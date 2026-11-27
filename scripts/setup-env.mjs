@@ -38,6 +38,8 @@ ensure("apps/web/.env.local", "# Tylko lokalnie. Nigdy nie commituj tego pliku."
   CORE_API_URL: "http://localhost:3200",
   HIRAHR_OAUTH_CLIENT_ID: "hirahr-web",
   HIRAHR_OAUTH_CLIENT_SECRET: coreSecret,
+  // Klucz szyfrujący dane wrażliwe (PESEL, rachunek, wynagrodzenie) tylko do pracy lokalnej, ADR-0104
+  HIRAHR_FIELD_ENCRYPTION_KEYS: `local1:${randomBytes(32).toString("base64")}`,
 });
 ensure("packages/db/.env", "# Tylko lokalnie: właściciel tabel, do migracji.", {
   DATABASE_URL: "postgresql://hira_hr_owner:hira_hr_owner@localhost:5437/hira_hr",

@@ -159,3 +159,50 @@ describe("schematy kopert API i profilu Me", () => {
     expect(healthEnvelope.data.status).toBe("ok");
   });
 });
+
+describe("walidacja polskich danych kadrowych", () => {
+  it("sprawdza PESEL: sumę kontrolną i datę urodzenia z kodowaniem stulecia", async () => {
+    const { isValidPesel, peselBirthDate } = await import("../src/index.js");
+    expect(isValidPesel("90010112318")).toBe(true);
+    expect(peselBirthDate("90010112318")).toBe("1990-01-01");
+    expect(isValidPesel("90010112319")).toBe(false);
+    expect(isValidPesel("9001011231")).toBe(false);
+    expect(isValidPesel("9001011231a")).toBe(false);
+    // 2005-03-15: miesiąc + 20
+    expect(peselBirthDate("05231512345")).toBe("2005-03-15");
+    // 31 lutego nie istnieje
+    expect(peselBirthDate("90023112345")).toBeNull();
+  });
+
+  it("sprawdza IBAN mod 97 i normalizuje polski rachunek", async () => {
+    const { isValidIban, normalizeIban } = await import("../src/index.js");
+    expect(isValidIban("PL61 1090 1014 0000 0712 1981 2874")).toBe(true);
+    expect(isValidIban("61109010140000071219812874")).toBe(true);
+    expect(normalizeIban("61 1090 1014 0000 0712 1981 2874")).toBe("PL61109010140000071219812874");
+    expect(isValidIban("PL62109010140000071219812874")).toBe(false);
+    expect(isValidIban("PL6110901014000007121981287")).toBe(false);
+    expect(isValidIban("DE89370400440532013000")).toBe(true);
+  });
+
+  it("pilnuje reguł umów: data końca dla próbnej i terminowej, etat tylko w umowach o pracę", async () => {
+    const { CreateContractInput, Fte, UpdateContractInput } = await import("../src/index.js");
+    expect(Fte.safeParse("3/4").success).toBe(true);
+    expect(Fte.safeParse("5/4").success).toBe(false);
+    expect(Fte.safeParse("0/1").success).toBe(false);
+    expect(CreateContractInput.safeParse({ type: "INDEFINITE", startDate: "2026-01-01", fte: "1/1" }).success).toBe(
+      true,
+    );
+    expect(CreateContractInput.safeParse({ type: "INDEFINITE", startDate: "2026-01-01" }).success).toBe(false);
+    expect(CreateContractInput.safeParse({ type: "FIXED_TERM", startDate: "2026-01-01", fte: "1/1" }).success).toBe(
+      false,
+    );
+    expect(
+      CreateContractInput.safeParse({ type: "FIXED_TERM", startDate: "2026-02-01", endDate: "2026-01-01", fte: "1/1" })
+        .success,
+    ).toBe(false);
+    expect(CreateContractInput.safeParse({ type: "B2B", startDate: "2026-01-01", fte: "1/1" }).success).toBe(false);
+    expect(CreateContractInput.safeParse({ type: "B2B", startDate: "2026-02-30" }).success).toBe(false);
+    expect(UpdateContractInput.safeParse({}).success).toBe(false);
+    expect(UpdateContractInput.safeParse({ notes: "Aneks" }).success).toBe(true);
+  });
+});
