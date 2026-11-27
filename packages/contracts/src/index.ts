@@ -133,5 +133,6 @@ export const Me = z.object({
 });
 export type Me = z.infer<typeof Me>;
 
+export * from "./leave.js";
 export * from "./people.js";
 export * from "./permissions.js";

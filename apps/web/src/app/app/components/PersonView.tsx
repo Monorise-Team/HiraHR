@@ -8,6 +8,7 @@ import { formatApiError } from "../api-errors";
 import { VIEW_HASHES } from "../app-views";
 import { formatAddress, formatDate, PERSON_STATUS_LABELS } from "../people-ui";
 import { ContractsSection } from "./ContractsSection";
+import { LeaveSection } from "./LeaveSection";
 import { SensitiveSection } from "./SensitiveSection";
 
 /** Karta osoby: dane z Core i kartoteka HiraHR. Ten sam widok służy jako „Mój profil”. */
@@ -86,6 +87,7 @@ export function PersonView({
 
       <ProfileSection client={client} card={card} onChange={setCard} />
       <ContractsSection client={client} card={card} onChanged={load} />
+      <LeaveSection client={client} card={card} isOwnProfile={isOwnProfile} />
       {card.access.canReadSensitive ? <SensitiveSection client={client} card={card} onChange={setCard} /> : null}
     </div>
   );

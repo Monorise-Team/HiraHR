@@ -160,3 +160,70 @@ model SensitiveAccessLog {
   @@map("sensitive_access_log")
   @@schema("public")
 }
+
+// ── Etap 2: urlopy i nieobecności (ADR-0104) ────────────────────────────────────────────────────
+
+enum LeaveType {
+  VACATION
+  ON_DEMAND
+  OCCASIONAL
+  CHILDCARE
+  SICK
+  UNPAID
+  OTHER
+
+  @@schema("public")
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+
+  @@schema("public")
+}
+
+/// Roczne saldo urlopu wypoczynkowego pracownika (wymiar, urlop zaległy z poprzedniego roku i uwagi kadr).
+model LeaveEntitlement {
+  organizationId     String   @map("organization_id") @db.Uuid
+  employeeId         String   @map("employee_id") @db.Uuid
+  year               Int
+  baseDays           Int?     @map("base_days")
+  entitledDays       Int      @map("entitled_days")
+  carriedOverDays    Int      @default(0) @map("carried_over_days")
+  notes              String?
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updatedByAccountId String   @map("updated_by_account_id") @db.Uuid
+
+  @@id([organizationId, employeeId, year])
+  @@map("leave_entitlements")
+  @@schema("public")
+}
+
+/// Wniosek albo wpis nieobecności. Dni pracy liczone przy złożeniu (wymiar pracy z Core i polskie święta).
+/// Aktywne (oczekujące i zaakceptowane) nieobecności jednej osoby nie mogą się nakładać (EXCLUDE w migracji).
+model LeaveRequest {
+  id                   String      @id @db.Uuid
+  organizationId       String      @map("organization_id") @db.Uuid
+  employeeId           String      @map("employee_id") @db.Uuid
+  type                 LeaveType
+  startDate            DateTime    @map("start_date") @db.Date
+  endDate              DateTime    @map("end_date") @db.Date
+  workingDays          Int         @map("working_days")
+  status               LeaveStatus
+  note                 String?
+  decisionNote         String?     @map("decision_note")
+  requestedByAccountId String      @map("requested_by_account_id") @db.Uuid
+  decidedByAccountId   String?     @map("decided_by_account_id") @db.Uuid
+  decidedAt            DateTime?   @map("decided_at") @db.Timestamptz(3)
+  createdAt            DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@index([organizationId, employeeId, startDate])
+  @@index([organizationId, status, startDate])
+  @@map("leave_requests")
+  @@schema("public")
+}

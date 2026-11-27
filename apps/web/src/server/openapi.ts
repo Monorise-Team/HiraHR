@@ -24,6 +24,9 @@ import {
   EmploymentContract,
   ErrorCode,
   Health,
+  LeaveRequestAccess,
+  LeaveStatus,
+  LeaveType,
   Me,
   PersonAccess,
   PositionSummary,
@@ -31,6 +34,7 @@ import {
   SensitiveAccessAction,
   SensitiveField,
   SensitivePresence,
+  VacationBaseDays,
 } from "@hirahr/contracts";
 import { z } from "zod";
 import {
@@ -179,6 +183,10 @@ function buildSchemaRegistry(routes: readonly RouteDefinition[]) {
   register("ContractSalary", ContractSalary);
   register("SensitiveField", SensitiveField);
   register("SensitiveAccessAction", SensitiveAccessAction);
+  register("LeaveType", LeaveType);
+  register("LeaveStatus", LeaveStatus);
+  register("LeaveRequestAccess", LeaveRequestAccess);
+  register("VacationBaseDays", VacationBaseDays);
 
   const responseEnvelopes = new Map<string, z.ZodType>();
   for (const route of routes) {

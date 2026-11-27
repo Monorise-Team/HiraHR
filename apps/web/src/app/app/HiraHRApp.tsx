@@ -1,11 +1,11 @@
 "use client";
 
 import { ApiError, createClient, type Me, type Unit } from "@hirahr/client";
-import { Button, Card, EmptyState, ThemeProvider, ToastProvider } from "@monorise-team/ui";
-import { CalendarDays, RefreshCw } from "lucide-react";
+import { ThemeProvider, ToastProvider } from "@monorise-team/ui";
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { AppearanceView } from "./AppearanceView";
 import { HiraHRShell } from "./HiraHRShell";
+import { LeaveView } from "./components/LeaveView";
 import { PeopleView } from "./components/PeopleView";
 import { PersonView } from "./components/PersonView";
 import { PositionsView } from "./components/PositionsView";
@@ -54,7 +54,6 @@ function HiraHRContent() {
   const [authState, setAuthState] = useState<"loading" | "signed-out" | "signed-in" | "error">("loading");
   const [authError, setAuthError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [units, setUnits] = useState<Unit[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -78,7 +77,6 @@ function HiraHRContent() {
   }, [client]);
 
   const handleRefresh = useCallback(async () => {
-    setRefreshing(true);
     setActionError(null);
     try {
       const profile = await client.session.me();
@@ -91,8 +89,6 @@ function HiraHRContent() {
         return;
       }
       setActionError(error instanceof Error ? error.message : "Nie udało się odświeżyć danych.");
-    } finally {
-      setRefreshing(false);
     }
   }, [client]);
 
@@ -220,14 +216,13 @@ function HiraHRContent() {
     content = <PositionsView key={refreshKey} client={client} />;
   } else if (activeView === "leave") {
     content = (
-      <StageEmptyView
-        title="Urlopy"
-        icon={<CalendarDays aria-hidden />}
-        emptyTitle="Urlopy pojawią się w etapie 2"
-        emptyDescription="W etapie 2 dojdą salda urlopu, wnioski z akceptacją kierownika i kalendarz nieobecności zespołu."
-        busy={busy}
-        refreshing={refreshing}
-        onRefresh={handleRefreshClick}
+      <LeaveView
+        key={refreshKey}
+        client={client}
+        employeeId={me.employee.id}
+        employeeName={me.employee.fullName}
+        capabilities={capabilities}
+        units={units}
       />
     );
   } else {
@@ -251,43 +246,5 @@ function HiraHRContent() {
     >
       {content}
     </HiraHRShell>
-  );
-}
-
-function StageEmptyView({
-  title,
-  icon,
-  emptyTitle,
-  emptyDescription,
-  busy,
-  refreshing,
-  onRefresh,
-}: {
-  title: string;
-  icon: ReactNode;
-  emptyTitle: string;
-  emptyDescription: string;
-  busy: boolean;
-  refreshing: boolean;
-  onRefresh: () => void;
-}) {
-  return (
-    <div className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-text-primary">{title}</h1>
-        <Button
-          variant="secondary"
-          size="sm"
-          icon={<RefreshCw aria-hidden />}
-          onClick={onRefresh}
-          disabled={busy || refreshing}
-        >
-          {refreshing ? "Odświeżanie…" : "Odśwież"}
-        </Button>
-      </div>
-      <Card surface="middle" className="p-6">
-        <EmptyState icon={icon} title={emptyTitle} description={emptyDescription} />
-      </Card>
-    </div>
   );
 }

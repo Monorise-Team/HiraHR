@@ -27,3 +27,26 @@ export const SensitiveAccessAction = {
 } as const
 
 export type SensitiveAccessAction = (typeof SensitiveAccessAction)[keyof typeof SensitiveAccessAction]
+
+
+export const LeaveType = {
+  VACATION: 'VACATION',
+  ON_DEMAND: 'ON_DEMAND',
+  OCCASIONAL: 'OCCASIONAL',
+  CHILDCARE: 'CHILDCARE',
+  SICK: 'SICK',
+  UNPAID: 'UNPAID',
+  OTHER: 'OTHER'
+} as const
+
+export type LeaveType = (typeof LeaveType)[keyof typeof LeaveType]
+
+
+export const LeaveStatus = {
+  PENDING: 'PENDING',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
+  CANCELLED: 'CANCELLED'
+} as const
+
+export type LeaveStatus = (typeof LeaveStatus)[keyof typeof LeaveStatus]

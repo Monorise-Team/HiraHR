@@ -60,7 +60,7 @@ export function todayInPoland(now: Date = new Date()): string {
   }).format(now);
 }
 
-function parseFte(value: string | null | undefined): { numerator: number | null; denominator: number | null } {
+export function parseFte(value: string | null | undefined): { numerator: number | null; denominator: number | null } {
   if (!value) return { numerator: null, denominator: null };
   const [numerator, denominator] = value.split("/").map(Number) as [number, number];
   return { numerator, denominator };
@@ -70,11 +70,11 @@ function fteToString(numerator: number | null, denominator: number | null): stri
   return numerator && denominator ? `${numerator}/${denominator}` : null;
 }
 
-function encodeCursor(payload: Record<string, unknown>): string {
+export function encodeCursor(payload: Record<string, unknown>): string {
   return Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
 }
 
-function decodeCursor<T>(cursor: string | undefined, guard: (value: unknown) => value is T): T | undefined {
+export function decodeCursor<T>(cursor: string | undefined, guard: (value: unknown) => value is T): T | undefined {
   if (!cursor) return undefined;
   try {
     const value: unknown = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
@@ -92,13 +92,13 @@ export function normalizeForSearch(value: string): string {
   return value.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/ł/g, "l");
 }
 
-function queryRecord(searchParams: URLSearchParams): Record<string, string> {
+export function queryRecord(searchParams: URLSearchParams): Record<string, string> {
   const record: Record<string, string> = {};
   for (const [key, value] of searchParams.entries()) record[key] = value;
   return record;
 }
 
-function isContractCurrent(startDate: Date, endDate: Date | null, today: string): boolean {
+export function isContractCurrent(startDate: Date, endDate: Date | null, today: string): boolean {
   const start = toIsoDate(startDate)!;
   const end = toIsoDate(endDate);
   return start <= today && (end === null || end >= today);

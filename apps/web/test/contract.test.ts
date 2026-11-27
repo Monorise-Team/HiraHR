@@ -22,9 +22,16 @@ import { NextRequest } from "next/server";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import * as health from "@/app/api/v1/health/route";
 import * as contractById from "@/app/api/v1/contracts/[contractId]/route";
+import * as leaveCalendar from "@/app/api/v1/leave/calendar/route";
+import * as leaveRequestCancel from "@/app/api/v1/leave/requests/[requestId]/cancel/route";
+import * as leaveRequestDecision from "@/app/api/v1/leave/requests/[requestId]/decision/route";
+import * as leaveRequests from "@/app/api/v1/leave/requests/route";
+import * as leaveWorkingDays from "@/app/api/v1/leave/working-days/route";
 import * as me from "@/app/api/v1/me/route";
 import * as person from "@/app/api/v1/people/[employeeId]/route";
 import * as personContracts from "@/app/api/v1/people/[employeeId]/contracts/route";
+import * as personLeaveBalance from "@/app/api/v1/people/[employeeId]/leave-balance/route";
+import * as personLeaveEntitlement from "@/app/api/v1/people/[employeeId]/leave-entitlements/[year]/route";
 import * as personAccessLog from "@/app/api/v1/people/[employeeId]/sensitive-access-log/route";
 import * as personSensitive from "@/app/api/v1/people/[employeeId]/sensitive/route";
 import * as people from "@/app/api/v1/people/route";
@@ -76,6 +83,14 @@ const ROUTE_HANDLERS: Readonly<Record<string, NextRouteHandler>> = {
   "POST /api/v1/positions": adapt(positions.POST),
   "PATCH /api/v1/positions/{positionId}": adapt(positionById.PATCH),
   "GET /api/v1/units": adapt(units.GET),
+  "GET /api/v1/leave/requests": adapt(leaveRequests.GET),
+  "POST /api/v1/leave/requests": adapt(leaveRequests.POST),
+  "POST /api/v1/leave/requests/{requestId}/decision": adapt(leaveRequestDecision.POST),
+  "POST /api/v1/leave/requests/{requestId}/cancel": adapt(leaveRequestCancel.POST),
+  "GET /api/v1/leave/calendar": adapt(leaveCalendar.GET),
+  "GET /api/v1/leave/working-days": adapt(leaveWorkingDays.GET),
+  "GET /api/v1/people/{employeeId}/leave-balance": adapt(personLeaveBalance.GET),
+  "PUT /api/v1/people/{employeeId}/leave-entitlements/{year}": adapt(personLeaveEntitlement.PUT),
 };
 
 function matchTemplate(template: string, pathname: string): Record<string, string> | null {
