@@ -8,15 +8,29 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
+  Address,
   ApiErrorBody,
   ApiErrorDetail,
   ApiErrorResponse,
+  ApiListMeta,
+  apiListSuccessSchema,
   ApiMeta,
   apiSuccessSchema,
   Capabilities,
+  ContractSalary,
+  ContractType,
+  EmergencyContact,
+  EmployeeProfile,
+  EmploymentContract,
   ErrorCode,
   Health,
   Me,
+  PersonAccess,
+  PositionSummary,
+  Salary,
+  SensitiveAccessAction,
+  SensitiveField,
+  SensitivePresence,
 } from "@hirahr/contracts";
 import { z } from "zod";
 import {
@@ -152,6 +166,19 @@ function buildSchemaRegistry(routes: readonly RouteDefinition[]) {
   register("Health", Health);
   register("Capabilities", Capabilities);
   register("Me", Me);
+  register("ApiListMeta", ApiListMeta);
+  register("ContractType", ContractType);
+  register("Address", Address);
+  register("EmergencyContact", EmergencyContact);
+  register("Salary", Salary);
+  register("PositionSummary", PositionSummary);
+  register("EmployeeProfile", EmployeeProfile);
+  register("EmploymentContract", EmploymentContract);
+  register("PersonAccess", PersonAccess);
+  register("SensitivePresence", SensitivePresence);
+  register("ContractSalary", ContractSalary);
+  register("SensitiveField", SensitiveField);
+  register("SensitiveAccessAction", SensitiveAccessAction);
 
   const responseEnvelopes = new Map<string, z.ZodType>();
   for (const route of routes) {
@@ -161,7 +188,9 @@ function buildSchemaRegistry(routes: readonly RouteDefinition[]) {
     if (route.dataSchemaName && route.dataSchema) {
       register(route.dataSchemaName, route.dataSchema);
       if (route.envelope && route.responseSchemaName && !responseEnvelopes.has(route.responseSchemaName)) {
-        const envelopeSchema = apiSuccessSchema(route.dataSchema);
+        const envelopeSchema = route.paginated
+          ? apiListSuccessSchema(route.dataSchema)
+          : apiSuccessSchema(route.dataSchema);
         responseEnvelopes.set(route.responseSchemaName, envelopeSchema);
         register(route.responseSchemaName, envelopeSchema);
       }
@@ -327,7 +356,7 @@ export function buildOpenApiDocument(): OpenApiSpec {
     info: {
       title: "HiraHR API",
       version: readRootVersion(),
-      summary: "API produktu HiraHR (kadry Monorise): stan usługi oraz sesja przeglądarki.",
+      summary: "API produktu HiraHR (kadry Monorise): kartoteka pracowników, umowy, stanowiska i dane wrażliwe.",
       description:
         "Opis API HiraHR (`/api/v1/*`) wygenerowany automatycznie z kodu (katalog ścieżek i schematy Zod). " +
         "Wszystkie odpowiedzi ustawiają nagłówek `Cache-Control: no-store` i używają koperty `{ data, meta, error }` " +

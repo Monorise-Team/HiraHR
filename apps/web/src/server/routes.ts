@@ -5,12 +5,30 @@
  * Moduł celowo nie importuje `server-only` i używa wyłącznie składni usuwalnej typów TypeScript,
  * dzięki czemu Node 24 uruchamia generator OpenAPI bez dodatkowego kompilatora.
  */
-import { API_PREFIX, Health, Me, type ErrorCode } from "@hirahr/contracts";
-import type { z } from "zod";
+import {
+  API_PREFIX,
+  CreateContractInput,
+  CreatePositionInput,
+  EmploymentContract,
+  Health,
+  Me,
+  PersonCard,
+  PersonListItem,
+  Position,
+  SensitiveAccessLogEntry,
+  SensitiveData,
+  Unit,
+  UpdateContractInput,
+  UpdatePositionInput,
+  UpdateProfileInput,
+  UpdateSensitiveInput,
+  type ErrorCode,
+} from "@hirahr/contracts";
+import { z } from "zod";
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
-export type RouteTag = "System" | "Session";
+export type RouteTag = "System" | "Session" | "People" | "Contracts" | "Positions" | "Units";
 
 /**
  * Wymagane uwierzytelnienie trasy:
@@ -28,6 +46,14 @@ export interface TagDefinition {
 export const TAGS: readonly TagDefinition[] = [
   { name: "System", description: "Stan usługi HiraHR." },
   { name: "Session", description: "Dane zalogowanej osoby, firmy i możliwości widoczne w przeglądarce (BFF)." },
+  {
+    name: "People",
+    description:
+      "Kartoteka pracowników (etap 1, ADR-0104): lista ludzi w zasięgu uprawnień, karta osoby, dane wrażliwe z dziennikiem dostępu.",
+  },
+  { name: "Contracts", description: "Umowy pracowników z historią; wynagrodzenie jest daną wrażliwą." },
+  { name: "Positions", description: "Katalog stanowisk firmy." },
+  { name: "Units", description: "Jednostki struktury firmy z MonoriseCore (nazwy do filtrów)." },
 ];
 
 export type SuccessStatus = 200 | 201 | 204;
@@ -55,6 +81,8 @@ export interface RouteDefinition {
   successStatus: SuccessStatus;
   /** Czy odpowiedź sukcesu jest owinięta w kopertę `{ data, meta, error }` (nie dotyczy 204). */
   envelope: boolean;
+  /** Lista ze stronicowaniem kursorowym (`meta.nextCursor`). */
+  paginated?: boolean;
   /** Parametry ścieżki (`path`) i zapytania (`query`). */
   parameters?: readonly ParameterDefinition[];
   /** Nazwa i schemat treści żądania (dla POST/PUT/PATCH). */
@@ -70,6 +98,30 @@ export interface RouteDefinition {
   responseDescription: string;
   errors: RouteErrors;
 }
+
+const UUID = z.string().uuid();
+const LIMIT = z.number().int().min(1).max(100);
+const CURSOR = z.string().min(1).max(256);
+const EMPLOYEE_ID: ParameterDefinition = {
+  name: "employeeId",
+  in: "path",
+  required: true,
+  description: "Identyfikator pracownika w MonoriseCore.",
+  schema: UUID,
+};
+const CONTRACT_ID: ParameterDefinition = {
+  name: "contractId",
+  in: "path",
+  required: true,
+  description: "Identyfikator umowy.",
+  schema: UUID,
+};
+const AUTH_401 = ["UNAUTHENTICATED"] as const;
+const ACCESS_403 = ["PRODUCT_ACCESS_REQUIRED", "PERMISSION_DENIED"] as const;
+const NOT_FOUND = ["NOT_FOUND"] as const;
+const VALIDATION = ["VALIDATION_FAILED"] as const;
+const CONFLICT = ["CONFLICT"] as const;
+const INTERNAL = ["INTERNAL_ERROR"] as const;
 
 export const ROUTES = {
   getHealth: {
@@ -113,6 +165,336 @@ export const ROUTES = {
       500: ["INTERNAL_ERROR"],
       503: ["INTERNAL_ERROR"],
     },
+  },
+
+  listPeople: {
+    method: "GET",
+    path: `${API_PREFIX}/people`,
+    operationId: "listPeople",
+    tag: "People",
+    summary: "Ludzie w zasięgu uprawnień",
+    description:
+      "Wymaga `hirahr.employees.read`: zakres całej firmy daje wszystkich, zakres jednostek tylko ich członków " +
+      "(członkostwa z katalogu MonoriseCore). Zawiera obecną umowę i stanowisko. Przy awarii Core `503`.",
+    auth: "user",
+    successStatus: 200,
+    envelope: true,
+    paginated: true,
+    parameters: [
+      {
+        name: "search",
+        in: "query",
+        required: false,
+        description: "Szukaj po imieniu i nazwisku (bez polskich znaków też).",
+        schema: z.string().max(120),
+      },
+      { name: "unitId", in: "query", required: false, description: "Tylko członkowie tej jednostki.", schema: UUID },
+      {
+        name: "limit",
+        in: "query",
+        required: false,
+        description: "Liczba osób na stronie (1–100, domyślnie 50).",
+        schema: LIMIT,
+      },
+      {
+        name: "cursor",
+        in: "query",
+        required: false,
+        description: "Kursor następnej strony z `meta.nextCursor`.",
+        schema: CURSOR,
+      },
+    ],
+    dataSchemaName: "PersonList",
+    dataSchema: z.array(PersonListItem),
+    responseSchemaName: "PersonListResponse",
+    responseDescription: "Strona listy ludzi.",
+    errors: { 401: AUTH_401, 403: ACCESS_403, 422: VALIDATION, 500: INTERNAL, 503: INTERNAL },
+  },
+  getPerson: {
+    method: "GET",
+    path: `${API_PREFIX}/people/{employeeId}`,
+    operationId: "getPerson",
+    tag: "People",
+    summary: "Karta osoby",
+    description:
+      "Dane z Core, kartoteka, umowy (bez wynagrodzeń) i informacja, które dane wrażliwe są wpisane. Sama osoba " +
+      "widzi zawsze swoją kartę; inni potrzebują `hirahr.employees.read` obejmującego osobę, w przeciwnym razie `404`.",
+    auth: "user",
+    successStatus: 200,
+    envelope: true,
+    parameters: [EMPLOYEE_ID],
+    dataSchemaName: "PersonCard",
+    dataSchema: PersonCard,
+    responseSchemaName: "PersonCardResponse",
+    responseDescription: "Karta osoby.",
+    errors: { 401: AUTH_401, 403: ACCESS_403, 404: NOT_FOUND, 422: VALIDATION, 500: INTERNAL, 503: INTERNAL },
+  },
+  updatePerson: {
+    method: "PATCH",
+    path: `${API_PREFIX}/people/{employeeId}`,
+    operationId: "updatePerson",
+    tag: "People",
+    summary: "Zmiana kartoteki (bez danych wrażliwych)",
+    description:
+      "Sama osoba może zmienić swoją kartotekę (samoobsługa); inni potrzebują `hirahr.employees.update` obejmującego osobę. " +
+      "Pominięte pole zostaje bez zmian, `null` czyści wartość.",
+    auth: "user",
+    successStatus: 200,
+    envelope: true,
+    parameters: [EMPLOYEE_ID],
+    requestBodySchemaName: "UpdateProfileInput",
+    requestBodySchema: UpdateProfileInput,
+    dataSchemaName: "PersonCard",
+    dataSchema: PersonCard,
+    responseSchemaName: "PersonCardResponse",
+    responseDescription: "Karta osoby po zmianie.",
+    errors: { 401: AUTH_401, 403: ACCESS_403, 404: NOT_FOUND, 422: VALIDATION, 500: INTERNAL, 503: INTERNAL },
+  },
+  getSensitiveData: {
+    method: "GET",
+    path: `${API_PREFIX}/people/{employeeId}/sensitive`,
+    operationId: "getSensitiveData",
+    tag: "People",
+    summary: "Dane wrażliwe osoby (odczyt zapisany w dzienniku)",
+    description:
+      "PESEL, rachunek, numer dokumentu i wynagrodzenia z umów. Sama osoba albo `hirahr.sensitive.read` " +
+      "w zakresie całej firmy (zakres jednostek nie wystarcza). Każdy odczyt trafia do dziennika.",
+    auth: "user",
+    successStatus: 200,
+    envelope: true,
+    parameters: [EMPLOYEE_ID],
+    dataSchemaName: "SensitiveData",
+    dataSchema: SensitiveData,
+    responseSchemaName: "SensitiveDataResponse",
+    responseDescription: "Odszyfrowane dane wrażliwe.",
+    errors: { 401: AUTH_401, 403: ACCESS_403, 404: NOT_FOUND, 422: VALIDATION, 500: INTERNAL, 503: INTERNAL },
+  },
+  updateSensitiveData: {
+    method: "PUT",
+    path: `${API_PREFIX}/people/{employeeId}/sensitive`,
+    operationId: "updateSensitiveData",
+    tag: "People",
+    summary: "Zmiana danych wrażliwych (zapisana w dzienniku)",
+    description:
+      "PESEL (z sumą kontrolną), rachunek IBAN i numer dokumentu. Tylko `hirahr.sensitive.update` w zakresie " +
+      "całej firmy. Wartości są szyfrowane AES-256-GCM; zmiana trafia do dziennika bez samych wartości.",
+    auth: "user",
+    successStatus: 200,
+    envelope: true,
+    parameters: [EMPLOYEE_ID],
+    requestBodySchemaName: "UpdateSensitiveInput",
+    requestBodySchema: UpdateSensitiveInput,
+    dataSchemaName: "PersonCard",
+    dataSchema: PersonCard,
+    responseSchemaName: "PersonCardResponse",
+    responseDescription: "Karta osoby po zmianie.",
+    errors: { 401: AUTH_401, 403: ACCESS_403, 404: NOT_FOUND, 422: VALIDATION, 500: INTERNAL, 503: INTERNAL },
+  },
+  listSensitiveAccessLog: {
+    method: "GET",
+    path: `${API_PREFIX}/people/{employeeId}/sensitive-access-log`,
+    operationId: "listSensitiveAccessLog",
+    tag: "People",
+    summary: "Dziennik dostępu do danych wrażliwych osoby",
+    description:
+      "Kto i kiedy odczytał albo zmienił dane wrażliwe. Sama osoba albo `hirahr.sensitive.read` w zakresie firmy.",
+    auth: "user",
+    successStatus: 200,
+    envelope: true,
+    paginated: true,
+    parameters: [
+      EMPLOYEE_ID,
+      {
+        name: "limit",
+        in: "query",
+        required: false,
+        description: "Liczba wpisów na stronie (1–100, domyślnie 50).",
+        schema: LIMIT,
+      },
+      {
+        name: "cursor",
+        in: "query",
+        required: false,
+        description: "Kursor następnej strony z `meta.nextCursor`.",
+        schema: CURSOR,
+      },
+    ],
+    dataSchemaName: "SensitiveAccessLogList",
+    dataSchema: z.array(SensitiveAccessLogEntry),
+    responseSchemaName: "SensitiveAccessLogListResponse",
+    responseDescription: "Strona dziennika, od najnowszych.",
+    errors: { 401: AUTH_401, 403: ACCESS_403, 404: NOT_FOUND, 422: VALIDATION, 500: INTERNAL, 503: INTERNAL },
+  },
+  createContract: {
+    method: "POST",
+    path: `${API_PREFIX}/people/{employeeId}/contracts`,
+    operationId: "createContract",
+    tag: "Contracts",
+    summary: "Nowa umowa osoby",
+    description:
+      "Wymaga `hirahr.employees.update` obejmującego osobę; wynagrodzenie dodatkowo `hirahr.sensitive.update` w zakresie firmy.",
+    auth: "user",
+    successStatus: 201,
+    envelope: true,
+    parameters: [EMPLOYEE_ID],
+    requestBodySchemaName: "CreateContractInput",
+    requestBodySchema: CreateContractInput,
+    dataSchemaName: "EmploymentContract",
+    dataSchema: EmploymentContract,
+    responseSchemaName: "EmploymentContractResponse",
+    responseDescription: "Utworzona umowa (bez wynagrodzenia).",
+    errors: { 401: AUTH_401, 403: ACCESS_403, 404: NOT_FOUND, 422: VALIDATION, 500: INTERNAL, 503: INTERNAL },
+  },
+  updateContract: {
+    method: "PATCH",
+    path: `${API_PREFIX}/contracts/{contractId}`,
+    operationId: "updateContract",
+    tag: "Contracts",
+    summary: "Zmiana umowy",
+    description: "Reguły (data końca, wymiar etatu) sprawdzane na umowie po zmianie. Wynagrodzenie jak przy tworzeniu.",
+    auth: "user",
+    successStatus: 200,
+    envelope: true,
+    parameters: [CONTRACT_ID],
+    requestBodySchemaName: "UpdateContractInput",
+    requestBodySchema: UpdateContractInput,
+    dataSchemaName: "EmploymentContract",
+    dataSchema: EmploymentContract,
+    responseSchemaName: "EmploymentContractResponse",
+    responseDescription: "Umowa po zmianie.",
+    errors: { 401: AUTH_401, 403: ACCESS_403, 404: NOT_FOUND, 422: VALIDATION, 500: INTERNAL, 503: INTERNAL },
+  },
+  deleteContract: {
+    method: "DELETE",
+    path: `${API_PREFIX}/contracts/{contractId}`,
+    operationId: "deleteContract",
+    tag: "Contracts",
+    summary: "Usunięcie umowy wpisanej przez pomyłkę",
+    auth: "user",
+    successStatus: 204,
+    envelope: false,
+    parameters: [CONTRACT_ID],
+    responseDescription: "Umowa usunięta.",
+    errors: { 401: AUTH_401, 403: ACCESS_403, 404: NOT_FOUND, 422: VALIDATION, 500: INTERNAL, 503: INTERNAL },
+  },
+  listPositions: {
+    method: "GET",
+    path: `${API_PREFIX}/positions`,
+    operationId: "listPositions",
+    tag: "Positions",
+    summary: "Katalog stanowisk firmy",
+    auth: "user",
+    successStatus: 200,
+    envelope: true,
+    paginated: true,
+    parameters: [
+      {
+        name: "includeArchived",
+        in: "query",
+        required: false,
+        description: "Także zarchiwizowane (`true`).",
+        schema: z.enum(["true", "false"]),
+      },
+      {
+        name: "limit",
+        in: "query",
+        required: false,
+        description: "Liczba na stronie (1–100, domyślnie 50).",
+        schema: LIMIT,
+      },
+      {
+        name: "cursor",
+        in: "query",
+        required: false,
+        description: "Kursor następnej strony z `meta.nextCursor`.",
+        schema: CURSOR,
+      },
+    ],
+    dataSchemaName: "PositionList",
+    dataSchema: z.array(Position),
+    responseSchemaName: "PositionListResponse",
+    responseDescription: "Stanowiska według nazwy.",
+    errors: { 401: AUTH_401, 403: ACCESS_403, 422: VALIDATION, 500: INTERNAL, 503: INTERNAL },
+  },
+  createPosition: {
+    method: "POST",
+    path: `${API_PREFIX}/positions`,
+    operationId: "createPosition",
+    tag: "Positions",
+    summary: "Nowe stanowisko",
+    description: "Wymaga `hirahr.settings.manage`. Nazwa aktywnego stanowiska jest unikalna w firmie (`409`).",
+    auth: "user",
+    successStatus: 201,
+    envelope: true,
+    requestBodySchemaName: "CreatePositionInput",
+    requestBodySchema: CreatePositionInput,
+    dataSchemaName: "Position",
+    dataSchema: Position,
+    responseSchemaName: "PositionResponse",
+    responseDescription: "Utworzone stanowisko.",
+    errors: { 401: AUTH_401, 403: ACCESS_403, 409: CONFLICT, 422: VALIDATION, 500: INTERNAL, 503: INTERNAL },
+  },
+  updatePosition: {
+    method: "PATCH",
+    path: `${API_PREFIX}/positions/{positionId}`,
+    operationId: "updatePosition",
+    tag: "Positions",
+    summary: "Zmiana albo archiwizacja stanowiska",
+    description: "Wymaga `hirahr.settings.manage`.",
+    auth: "user",
+    successStatus: 200,
+    envelope: true,
+    parameters: [
+      { name: "positionId", in: "path", required: true, description: "Identyfikator stanowiska.", schema: UUID },
+    ],
+    requestBodySchemaName: "UpdatePositionInput",
+    requestBodySchema: UpdatePositionInput,
+    dataSchemaName: "Position",
+    dataSchema: Position,
+    responseSchemaName: "PositionResponse",
+    responseDescription: "Stanowisko po zmianie.",
+    errors: {
+      401: AUTH_401,
+      403: ACCESS_403,
+      404: NOT_FOUND,
+      409: CONFLICT,
+      422: VALIDATION,
+      500: INTERNAL,
+      503: INTERNAL,
+    },
+  },
+  listUnits: {
+    method: "GET",
+    path: `${API_PREFIX}/units`,
+    operationId: "listUnits",
+    tag: "Units",
+    summary: "Aktywne jednostki firmy",
+    description: "Nazwy jednostek z MonoriseCore w imieniu zalogowanej osoby; tylko sesja przeglądarki.",
+    auth: "session",
+    successStatus: 200,
+    envelope: true,
+    paginated: true,
+    parameters: [
+      {
+        name: "limit",
+        in: "query",
+        required: false,
+        description: "Liczba na stronie (1–100, domyślnie 50).",
+        schema: LIMIT,
+      },
+      {
+        name: "cursor",
+        in: "query",
+        required: false,
+        description: "Kursor następnej strony z `meta.nextCursor`.",
+        schema: CURSOR,
+      },
+    ],
+    dataSchemaName: "UnitList",
+    dataSchema: z.array(Unit),
+    responseSchemaName: "UnitListResponse",
+    responseDescription: "Jednostki według nazwy.",
+    errors: { 401: AUTH_401, 403: ACCESS_403, 500: INTERNAL, 503: INTERNAL },
   },
 } as const satisfies Record<string, RouteDefinition>;
 

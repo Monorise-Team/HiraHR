@@ -53,6 +53,14 @@ export const config = {
   get sessionSecrets() {
     return list(process.env.HIRAHR_SESSION_SECRET);
   },
+  /**
+   * Klucze szyfrujące dane wrażliwe (ADR-0104): `id:klucz,id:klucz` (klucz to 32 bajty w base64).
+   * Pierwszy szyfruje nowe wartości, pozostałe służą tylko do odczytu starszych (wymiana klucza).
+   * Lokalnie tworzy go `pnpm setup:env`; na serwerze pochodzi z menedżera sekretów.
+   */
+  get fieldEncryptionKeys() {
+    return list(process.env.HIRAHR_FIELD_ENCRYPTION_KEYS);
+  },
   /** Klucze publiczne Core wpisane na stałe (JWKS w JSON) zamiast pobierania z Core: testy. */
   get coreJwks() {
     return process.env.HIRAHR_CORE_JWKS ?? "";

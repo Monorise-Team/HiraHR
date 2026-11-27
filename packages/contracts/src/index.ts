@@ -39,6 +39,25 @@ export const ApiMeta = z.object({
 });
 export type ApiMeta = z.infer<typeof ApiMeta>;
 
+export const ApiListMeta = ApiMeta.extend({
+  nextCursor: z.string().nullable(),
+});
+export type ApiListMeta = z.infer<typeof ApiListMeta>;
+
+/** Koperta udanej odpowiedzi listy: `{ data: [...], meta: { requestId, nextCursor }, error: null }`. */
+export function apiListSuccessSchema<T extends z.ZodType>(data: T) {
+  return z.object({
+    data,
+    meta: ApiListMeta,
+    error: z.null(),
+  });
+}
+
+export interface PaginatedResult<T> {
+  items: T[];
+  nextCursor: string | null;
+}
+
 /** Koperta udanej odpowiedzi API HiraHR: `{ data, meta, error: null }` (ADR-0044). */
 export function apiSuccessSchema<T extends z.ZodType>(data: T) {
   return z.object({
@@ -114,4 +133,5 @@ export const Me = z.object({
 });
 export type Me = z.infer<typeof Me>;
 
+export * from "./people.js";
 export * from "./permissions.js";

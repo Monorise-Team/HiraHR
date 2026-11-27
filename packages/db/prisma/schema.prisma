@@ -60,3 +60,103 @@ model ProcessedEvent {
   @@map("processed_events")
   @@schema("public")
 }
+
+// ── Etap 1: kartoteka (ADR-0104) ─────────────────────────────────────────────────────────────────
+// Wszystkie tabele mają wymuszone RLS po organization_id. Pola *_encrypted zawierają wyłącznie szyfrogram
+// AES-256-GCM (format v1.<klucz>.<iv>.<szyfrogram>.<znacznik>), nigdy jawne wartości.
+
+enum ContractType {
+  PROBATION
+  FIXED_TERM
+  INDEFINITE
+  MANDATE
+  SPECIFIC_TASK
+  B2B
+
+  @@schema("public")
+}
+
+enum SensitiveAccessAction {
+  READ
+  UPDATE
+
+  @@schema("public")
+}
+
+/// Stanowisko z katalogu firmy (np. „Magazynierka”). Archiwizowane, nie usuwane, bo wskazują je umowy.
+model Position {
+  id             String               @id @db.Uuid
+  organizationId String               @map("organization_id") @db.Uuid
+  name           String
+  description    String?
+  archivedAt     DateTime?            @map("archived_at") @db.Timestamptz(3)
+  createdAt      DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+  contracts      EmploymentContract[]
+
+  @@unique([organizationId, id])
+  @@index([organizationId, archivedAt])
+  @@map("positions")
+  @@schema("public")
+}
+
+/// Kartoteka pracownika Core (`employeeId`): dane kadrowe spoza Core i zaszyfrowane dane wrażliwe.
+model EmployeeProfile {
+  organizationId       String    @map("organization_id") @db.Uuid
+  employeeId           String    @map("employee_id") @db.Uuid
+  dateOfBirth          DateTime? @map("date_of_birth") @db.Date
+  personalEmail        String?   @map("personal_email")
+  personalPhone        String?   @map("personal_phone")
+  homeAddress          Json?     @map("home_address") @db.JsonB
+  mailingAddress       Json?     @map("mailing_address") @db.JsonB
+  emergencyContact     Json?     @map("emergency_contact") @db.JsonB
+  peselEncrypted       String?   @map("pesel_encrypted")
+  bankAccountEncrypted String?   @map("bank_account_encrypted")
+  idDocumentEncrypted  String?   @map("id_document_encrypted")
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updatedByAccountId   String?   @map("updated_by_account_id") @db.Uuid
+
+  @@id([organizationId, employeeId])
+  @@map("employee_profiles")
+  @@schema("public")
+}
+
+/// Umowa pracownika z historią (kolejne wiersze). Wynagrodzenie jest daną wrażliwą (szyfrogram).
+model EmploymentContract {
+  id                 String       @id @db.Uuid
+  organizationId     String       @map("organization_id") @db.Uuid
+  employeeId         String       @map("employee_id") @db.Uuid
+  type               ContractType
+  startDate          DateTime     @map("start_date") @db.Date
+  endDate            DateTime?    @map("end_date") @db.Date
+  fteNumerator       Int?         @map("fte_numerator")
+  fteDenominator     Int?         @map("fte_denominator")
+  positionId         String?      @map("position_id") @db.Uuid
+  salaryEncrypted    String?      @map("salary_encrypted")
+  notes              String?
+  createdAt          DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+  createdByAccountId String       @map("created_by_account_id") @db.Uuid
+  position           Position?    @relation(fields: [organizationId, positionId], references: [organizationId, id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@index([organizationId, employeeId, startDate])
+  @@map("employment_contracts")
+  @@schema("public")
+}
+
+/// Dziennik dostępu do danych wrażliwych: tylko dopisywanie (rola aplikacji ma SELECT i INSERT).
+model SensitiveAccessLog {
+  id             String                @id @db.Uuid
+  organizationId String                @map("organization_id") @db.Uuid
+  actorAccountId String                @map("actor_account_id") @db.Uuid
+  employeeId     String                @map("employee_id") @db.Uuid
+  action         SensitiveAccessAction
+  fields         String[]
+  createdAt      DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([organizationId, employeeId, createdAt, id], map: "sensitive_access_log_org_employee_created_idx")
+  @@map("sensitive_access_log")
+  @@schema("public")
+}

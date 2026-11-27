@@ -9,7 +9,21 @@
 * 🟢 You can import this file directly.
 */
 
+export const ContractType = {
+  PROBATION: 'PROBATION',
+  FIXED_TERM: 'FIXED_TERM',
+  INDEFINITE: 'INDEFINITE',
+  MANDATE: 'MANDATE',
+  SPECIFIC_TASK: 'SPECIFIC_TASK',
+  B2B: 'B2B'
+} as const
+
+export type ContractType = (typeof ContractType)[keyof typeof ContractType]
 
 
-// This file is empty because there are no enums in the schema.
-export {}
+export const SensitiveAccessAction = {
+  READ: 'READ',
+  UPDATE: 'UPDATE'
+} as const
+
+export type SensitiveAccessAction = (typeof SensitiveAccessAction)[keyof typeof SensitiveAccessAction]

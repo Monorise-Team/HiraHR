@@ -21,7 +21,16 @@ import { HIRAHR_PERMISSIONS } from "@hirahr/contracts";
 import { NextRequest } from "next/server";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import * as health from "@/app/api/v1/health/route";
+import * as contractById from "@/app/api/v1/contracts/[contractId]/route";
 import * as me from "@/app/api/v1/me/route";
+import * as person from "@/app/api/v1/people/[employeeId]/route";
+import * as personContracts from "@/app/api/v1/people/[employeeId]/contracts/route";
+import * as personAccessLog from "@/app/api/v1/people/[employeeId]/sensitive-access-log/route";
+import * as personSensitive from "@/app/api/v1/people/[employeeId]/sensitive/route";
+import * as people from "@/app/api/v1/people/route";
+import * as positionById from "@/app/api/v1/positions/[positionId]/route";
+import * as positions from "@/app/api/v1/positions/route";
+import * as units from "@/app/api/v1/units/route";
 import { route } from "@/server/api";
 import { requireUser } from "@/server/auth";
 import { resetMachineCoreTokenCache } from "@/server/core";
@@ -44,18 +53,60 @@ const COMMITTED_OPENAPI_PATH = resolve(import.meta.dirname, "../../../openapi/hi
 
 type NextRouteHandler = (
   request: NextRequest,
-  context: { params: Promise<Record<string, never>> },
+  context: { params: Promise<Record<string, string>> },
 ) => Promise<Response>;
 
+function adapt<P>(fn: (request: NextRequest, context: { params: Promise<P> }) => Promise<Response>): NextRouteHandler {
+  return (request, context) => fn(request, context as unknown as { params: Promise<P> });
+}
+
 const ROUTE_HANDLERS: Readonly<Record<string, NextRouteHandler>> = {
-  "GET /api/v1/health": health.GET,
-  "GET /api/v1/me": me.GET,
+  "GET /api/v1/health": adapt(health.GET),
+  "GET /api/v1/me": adapt(me.GET),
+  "GET /api/v1/people": adapt(people.GET),
+  "GET /api/v1/people/{employeeId}": adapt(person.GET),
+  "PATCH /api/v1/people/{employeeId}": adapt(person.PATCH),
+  "GET /api/v1/people/{employeeId}/sensitive": adapt(personSensitive.GET),
+  "PUT /api/v1/people/{employeeId}/sensitive": adapt(personSensitive.PUT),
+  "GET /api/v1/people/{employeeId}/sensitive-access-log": adapt(personAccessLog.GET),
+  "POST /api/v1/people/{employeeId}/contracts": adapt(personContracts.POST),
+  "PATCH /api/v1/contracts/{contractId}": adapt(contractById.PATCH),
+  "DELETE /api/v1/contracts/{contractId}": adapt(contractById.DELETE),
+  "GET /api/v1/positions": adapt(positions.GET),
+  "POST /api/v1/positions": adapt(positions.POST),
+  "PATCH /api/v1/positions/{positionId}": adapt(positionById.PATCH),
+  "GET /api/v1/units": adapt(units.GET),
 };
+
+function matchTemplate(template: string, pathname: string): Record<string, string> | null {
+  const names: string[] = [];
+  const pattern = template.replace(/\{([^}]+)\}/g, (_match, name: string) => {
+    names.push(name);
+    return "([^/]+)";
+  });
+  const match = new RegExp(`^${pattern}$`).exec(pathname);
+  if (!match) return null;
+  return Object.fromEntries(names.map((name, index) => [name, decodeURIComponent(match[index + 1]!)]));
+}
 
 async function dispatch(handlers: Readonly<Record<string, NextRouteHandler>>, request: Request): Promise<Response> {
   const url = new URL(request.url);
-  const key = `${request.method.toUpperCase()} ${url.pathname}`;
-  const handler = handlers[key];
+  const method = request.method.toUpperCase();
+  const key = `${method} ${url.pathname}`;
+  let handler: NextRouteHandler | undefined;
+  let params: Record<string, string> = {};
+  // Ścieżki bez parametrów mają pierwszeństwo przed szablonami z {parametrem}
+  const entries = Object.entries(handlers).sort(([a], [b]) => (a.includes("{") ? 1 : 0) - (b.includes("{") ? 1 : 0));
+  for (const [routeKey, candidate] of entries) {
+    const [routeMethod, template] = routeKey.split(" ") as [string, string];
+    if (routeMethod !== method) continue;
+    const matched = matchTemplate(template, url.pathname);
+    if (matched) {
+      handler = candidate;
+      params = matched;
+      break;
+    }
+  }
   if (!handler) {
     return new Response(
       JSON.stringify({
@@ -73,7 +124,7 @@ async function dispatch(handlers: Readonly<Record<string, NextRouteHandler>>, re
     headers: request.headers,
     ...(body !== undefined && body.length > 0 ? { body } : {}),
   });
-  return handler(nextRequest, { params: Promise.resolve({}) });
+  return handler(nextRequest, { params: Promise.resolve(params) });
 }
 
 function listRoutePathsOnDisk(dir: string, prefix = "/api/v1"): string[] {
@@ -81,7 +132,8 @@ function listRoutePathsOnDisk(dir: string, prefix = "/api/v1"): string[] {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const full = join(dir, entry.name);
     if (entry.isDirectory()) {
-      paths.push(...listRoutePathsOnDisk(full, `${prefix}/${entry.name}`));
+      const openApiSegment = entry.name.replace(/^\[(.+)\]$/, "{$1}");
+      paths.push(...listRoutePathsOnDisk(full, `${prefix}/${openApiSegment}`));
     } else if (entry.isFile() && entry.name === "route.ts") {
       paths.push(prefix);
     }

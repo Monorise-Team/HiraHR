@@ -1,6 +1,6 @@
 # Baza danych HiraHR
 
-HiraHR korzysta z bazy PostgreSQL 17 i Prisma 7 w paczce `packages/db` (`@hirahr/db`, ADR-0096). Lokalnie baza działa w Dockerze na porcie `5437` (kontener `hira-hr-postgres-1`), żeby nie kolidować z Core (`5433`), AvenMail (`5434`) i TimoTime (`5435`).
+HiraHR korzysta z bazy PostgreSQL 17 i Prisma 7 w paczce `packages/db` (`@hirahr/db`, ADR-0096). Lokalnie baza działa w Dockerze na porcie `5437` (kontener `hira-hr-database`), żeby nie kolidować z Core (`5433`), AvenMail (`5434`), TimoTime (`5435`) i KivoTasks (`5436`).
 
 ## Role i bazy (`docker/postgres-init.sql`)
 
@@ -9,13 +9,26 @@ HiraHR korzysta z bazy PostgreSQL 17 i Prisma 7 w paczce `packages/db` (`@hirahr
 
 ## Tabele w etapie 0 (`packages/db/prisma/schema.prisma`)
 
-Początkowa migracja (`packages/db/prisma/migrations/20261126200000_init/migration.sql`) zakłada wyłącznie tabele techniczne etapu 0 i infrastrukturę RLS:
+Początkowa migracja (`packages/db/prisma/migrations/20261127200000_init/migration.sql`) zakłada wyłącznie tabele techniczne etapu 0 i infrastrukturę RLS:
 
 | Tabela               | Schemat  | RLS | Przeznaczenie                                                                                                                                |
 | -------------------- | -------- | --- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | `sessions`           | `auth`   | Nie | Zaszyfrowane sesje przeglądarki (BFF, `@monorise-team/auth`). Serwer szuka ich po skrócie identyfikatora z ciasteczka przed poznaniem firmy. |
 | `event_feed_cursors` | `public` | Nie | Ostatni przetworzony numer `sequence` dla kanału zdarzeń Core (`id = "core"`). Bez danych firmowych.                                         |
 | `processed_events`   | `public` | Nie | Deduplikacja zdarzeń `(consumer, event_id)` dla odbiorcy `@monorise-team/events`. Bez danych firmowych.                                      |
+
+## Tabele etapu 1: kartoteka (`20261127210000_employee_records`)
+
+Wszystkie z `ENABLE` + `FORCE ROW LEVEL SECURITY` i polityką `organization_isolation`. Migracja odbiera domyślne prawa nadane w etapie 0 i nadaje tylko potrzebne.
+
+| Tabela                 | Prawa `hira_hr_app`              | Przeznaczenie                                                                                                                                                                                                   |
+| ---------------------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `positions`            | `SELECT, INSERT, UPDATE`         | Katalog stanowisk; archiwizacja zamiast usuwania; aktywna nazwa unikalna w firmie (indeks częściowy `positions_active_name_key` na `lower(name)`).                                                              |
+| `employee_profiles`    | `SELECT, INSERT, UPDATE`         | Kartoteka pracownika Core (`organization_id`, `employee_id`): data urodzenia, kontakty, adresy i kontakt w nagłych wypadkach (JSONB) oraz `pesel_encrypted`, `bank_account_encrypted`, `id_document_encrypted`. |
+| `employment_contracts` | `SELECT, INSERT, UPDATE, DELETE` | Umowy z historią; złożony klucz obcy do `positions`; CHECK: data końca dla próbnej i terminowej, etat tylko w umowach o pracę; `salary_encrypted`.                                                              |
+| `sensitive_access_log` | `SELECT, INSERT`                 | Dziennik dostępu do danych wrażliwych, tylko do dopisywania; polityka wymaga `actor_account_id = current_account_id()`.                                                                                         |
+
+Kolumny `*_encrypted` mają CHECK na format szyfrogramu (`v1.<klucz>.<iv>.<szyfrogram>.<znacznik>`), więc jawna wartość nie przejdzie. Szyfrowanie: `apps/web/src/server/field-encryption.ts` (AES-256-GCM, losowe IV, AAD = firma, rekord i pole; klucze `HIRAHR_FIELD_ENCRYPTION_KEYS` w formacie `id:base64`, pierwszy szyfruje, wszystkie odszyfrowują; lokalnie tworzy go `pnpm setup:env`).
 
 ## Funkcje pomocnicze RLS i `withUser`
 
@@ -42,6 +55,6 @@ Po stronie TypeScript ustawia je wyłącznie `withUser(db, actor, fn)` w `packag
 
 ## Testy bazy
 
-- `packages/db/test/rls.test.ts`: sprawdza uprawnienia roli `hira_hr_app`, zachowanie `withUser` i funkcji RLS na tabeli tymczasowej z `ENABLE` + `FORCE ROW LEVEL SECURITY`, tabele techniczne oraz odmowę dostępu do `public._prisma_migrations`.
+- `packages/db/test/rls.test.ts`: sprawdza uprawnienia roli `hira_hr_app`, zachowanie `withUser` i funkcji RLS na tabeli tymczasowej z `ENABLE` + `FORCE ROW LEVEL SECURITY`, tabele techniczne, odmowę dostępu do `public._prisma_migrations` oraz RLS, CHECK i dziennik tylko do dopisywania w tabelach kartoteki.
 - `apps/web/test/tenant-isolation.test.ts`: sprawdza separację między firmami przez `checkTenantIsolation` z `@monorise-team/testing`.
 - Oba pliki wymagają działającego PostgreSQL (`pnpm db:up && pnpm db:migrate`).

@@ -1,13 +1,42 @@
 import type { Capabilities } from "@hirahr/client";
 
-export type AppView = "profile" | "people" | "leave" | "appearance";
+export type AppView = "profile" | "people" | "person" | "leave" | "positions" | "appearance";
 
 export const VIEW_HASHES: Record<AppView, string> = {
   profile: "#moj-profil",
   people: "#ludzie",
+  person: "#osoba",
   leave: "#urlopy",
+  positions: "#stanowiska",
   appearance: "#wyglad",
 };
+
+export interface AppRoute {
+  readonly view: AppView;
+  /** Pracownik Core dla widoku karty osoby (`#osoba/<id>`). */
+  readonly employeeId: string | null;
+}
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Adres karty osoby w aplikacji. */
+export function personHash(employeeId: string): string {
+  return `${VIEW_HASHES.person}/${employeeId}`;
+}
+
+/**
+ * Rozpoznaje widok i parametr z fragmentu adresu: `#osoba/<uuid>` to karta osoby, a nieznany
+ * albo pusty fragment wraca do „Mój profil”.
+ */
+export function parseRouteFromHash(hash: string): AppRoute {
+  const normalized = hash.trim().toLowerCase();
+  const personPrefix = `${VIEW_HASHES.person}/`;
+  if (normalized.startsWith(personPrefix)) {
+    const employeeId = normalized.slice(personPrefix.length);
+    return UUID_PATTERN.test(employeeId) ? { view: "person", employeeId } : { view: "people", employeeId: null };
+  }
+  return { view: parseViewFromHash(hash), employeeId: null };
+}
 
 export const DEFAULT_NO_ACCESS_MESSAGE = "HiraHR nie jest włączony dla Twojego konta. Poproś Ownera firmy o dostęp.";
 
@@ -39,6 +68,7 @@ export function parseViewFromHash(hash: string): AppView {
   if (normalized === VIEW_HASHES.appearance) return "appearance";
   if (normalized === VIEW_HASHES.people) return "people";
   if (normalized === VIEW_HASHES.leave) return "leave";
+  if (normalized === VIEW_HASHES.positions) return "positions";
   return "profile";
 }
 

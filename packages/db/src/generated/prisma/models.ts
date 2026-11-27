@@ -11,4 +11,8 @@
 export type * from './models/Session.js'
 export type * from './models/EventFeedCursor.js'
 export type * from './models/ProcessedEvent.js'
+export type * from './models/Position.js'
+export type * from './models/EmployeeProfile.js'
+export type * from './models/EmploymentContract.js'
+export type * from './models/SensitiveAccessLog.js'
 export type * from './commonInputTypes.js'

@@ -1,16 +1,19 @@
 "use client";
 
-import { ApiError, createClient, type Me } from "@hirahr/client";
+import { ApiError, createClient, type Me, type Unit } from "@hirahr/client";
 import { Button, Card, EmptyState, ThemeProvider, ToastProvider } from "@monorise-team/ui";
-import { CalendarDays, RefreshCw, UserRound, Users } from "lucide-react";
+import { CalendarDays, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { AppearanceView } from "./AppearanceView";
 import { HiraHRShell } from "./HiraHRShell";
+import { PeopleView } from "./components/PeopleView";
+import { PersonView } from "./components/PersonView";
+import { PositionsView } from "./components/PositionsView";
 import { LoadErrorView, LoadingView, NoAccessView, SignedOutView } from "./SignedOutView";
 import {
   AUTH_ERROR_MESSAGES,
   VIEW_HASHES,
-  parseViewFromHash,
+  parseRouteFromHash,
   resolveAccessDenialMessage,
   type AppView,
 } from "./app-views";
@@ -53,6 +56,8 @@ function HiraHRContent() {
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [units, setUnits] = useState<Unit[]>([]);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const reload = useCallback(async () => {
     setAuthState("loading");
@@ -78,6 +83,7 @@ function HiraHRContent() {
     try {
       const profile = await client.session.me();
       setMe(profile);
+      setRefreshKey((key) => key + 1);
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
         setMe(null);
@@ -117,6 +123,23 @@ function HiraHRContent() {
       cancelled = true;
     };
   }, [client]);
+
+  // Nazwy jednostek do filtrów i kart (best-effort: bez nich widać same identyfikatory)
+  useEffect(() => {
+    if (authState !== "signed-in") return;
+    let cancelled = false;
+    client.units.list({ limit: 100 }).then(
+      (page) => {
+        if (!cancelled) setUnits(page.items);
+      },
+      () => {
+        if (!cancelled) setUnits([]);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [authState, client]);
 
   const handleSignOut = useCallback(async () => {
     setBusy(true);
@@ -174,12 +197,50 @@ function HiraHRContent() {
     );
   }
 
-  const activeView = parseViewFromHash(hash);
+  const route = parseRouteFromHash(hash);
+  const capabilities = me.capabilities;
+  const activeView = route.view;
+
+  let content: ReactNode;
+  if (activeView === "appearance") {
+    content = <AppearanceView />;
+  } else if (activeView === "person" && route.employeeId) {
+    content = (
+      <PersonView
+        key={`${route.employeeId}-${refreshKey}`}
+        client={client}
+        employeeId={route.employeeId}
+        units={units}
+        isOwnProfile={route.employeeId === me.employee.id}
+      />
+    );
+  } else if (activeView === "people" && capabilities.readEmployees) {
+    content = <PeopleView key={refreshKey} client={client} units={units} />;
+  } else if (activeView === "positions" && capabilities.manageSettings) {
+    content = <PositionsView key={refreshKey} client={client} />;
+  } else if (activeView === "leave") {
+    content = (
+      <StageEmptyView
+        title="Urlopy"
+        icon={<CalendarDays aria-hidden />}
+        emptyTitle="Urlopy pojawią się w etapie 2"
+        emptyDescription="W etapie 2 dojdą salda urlopu, wnioski z akceptacją kierownika i kalendarz nieobecności zespołu."
+        busy={busy}
+        refreshing={refreshing}
+        onRefresh={handleRefreshClick}
+      />
+    );
+  } else {
+    content = (
+      <PersonView key={`me-${refreshKey}`} client={client} employeeId={me.employee.id} units={units} isOwnProfile />
+    );
+  }
 
   return (
     <HiraHRShell
       organizationName={me.organization.name}
       personName={me.employee.fullName}
+      capabilities={capabilities}
       view={activeView}
       busy={busy}
       actionError={actionError}
@@ -188,39 +249,7 @@ function HiraHRContent() {
       onRefresh={handleRefreshClick}
       onSignOut={handleSignOutClick}
     >
-      {activeView === "appearance" ? (
-        <AppearanceView />
-      ) : activeView === "people" ? (
-        <StageEmptyView
-          title="Ludzie"
-          icon={<Users aria-hidden />}
-          emptyTitle="Kartoteki pojawią się w etapie 1"
-          emptyDescription="Lista ludzi korzysta z pracowników i jednostek firmy w MonoriseCore. W etapie 1 dojdą kartoteki: dane kadrowe, umowy i stanowiska."
-          busy={busy}
-          refreshing={refreshing}
-          onRefresh={handleRefreshClick}
-        />
-      ) : activeView === "leave" ? (
-        <StageEmptyView
-          title="Urlopy"
-          icon={<CalendarDays aria-hidden />}
-          emptyTitle="Urlopy pojawią się w etapie 2"
-          emptyDescription="W etapie 2 dojdą salda urlopu, wnioski z akceptacją kierownika i kalendarz nieobecności zespołu."
-          busy={busy}
-          refreshing={refreshing}
-          onRefresh={handleRefreshClick}
-        />
-      ) : (
-        <StageEmptyView
-          title="Mój profil"
-          icon={<UserRound aria-hidden />}
-          emptyTitle={`Witaj, ${me.employee.firstName}`}
-          emptyDescription="W etapie 0 działa logowanie kontem Monorise, sprawdzanie uprawnień oraz nawigacja z paletą poleceń. Twoja kartoteka pojawi się w etapie 1."
-          busy={busy}
-          refreshing={refreshing}
-          onRefresh={handleRefreshClick}
-        />
-      )}
+      {content}
     </HiraHRShell>
   );
 }

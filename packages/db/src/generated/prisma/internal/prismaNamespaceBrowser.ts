@@ -53,7 +53,11 @@ export const AnyNull = runtime.AnyNull
 export const ModelName = {
   Session: 'Session',
   EventFeedCursor: 'EventFeedCursor',
-  ProcessedEvent: 'ProcessedEvent'
+  ProcessedEvent: 'ProcessedEvent',
+  Position: 'Position',
+  EmployeeProfile: 'EmployeeProfile',
+  EmploymentContract: 'EmploymentContract',
+  SensitiveAccessLog: 'SensitiveAccessLog'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -103,6 +107,72 @@ export const ProcessedEventScalarFieldEnum = {
 export type ProcessedEventScalarFieldEnum = (typeof ProcessedEventScalarFieldEnum)[keyof typeof ProcessedEventScalarFieldEnum]
 
 
+export const PositionScalarFieldEnum = {
+  id: 'id',
+  organizationId: 'organizationId',
+  name: 'name',
+  description: 'description',
+  archivedAt: 'archivedAt',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type PositionScalarFieldEnum = (typeof PositionScalarFieldEnum)[keyof typeof PositionScalarFieldEnum]
+
+
+export const EmployeeProfileScalarFieldEnum = {
+  organizationId: 'organizationId',
+  employeeId: 'employeeId',
+  dateOfBirth: 'dateOfBirth',
+  personalEmail: 'personalEmail',
+  personalPhone: 'personalPhone',
+  homeAddress: 'homeAddress',
+  mailingAddress: 'mailingAddress',
+  emergencyContact: 'emergencyContact',
+  peselEncrypted: 'peselEncrypted',
+  bankAccountEncrypted: 'bankAccountEncrypted',
+  idDocumentEncrypted: 'idDocumentEncrypted',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  updatedByAccountId: 'updatedByAccountId'
+} as const
+
+export type EmployeeProfileScalarFieldEnum = (typeof EmployeeProfileScalarFieldEnum)[keyof typeof EmployeeProfileScalarFieldEnum]
+
+
+export const EmploymentContractScalarFieldEnum = {
+  id: 'id',
+  organizationId: 'organizationId',
+  employeeId: 'employeeId',
+  type: 'type',
+  startDate: 'startDate',
+  endDate: 'endDate',
+  fteNumerator: 'fteNumerator',
+  fteDenominator: 'fteDenominator',
+  positionId: 'positionId',
+  salaryEncrypted: 'salaryEncrypted',
+  notes: 'notes',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  createdByAccountId: 'createdByAccountId'
+} as const
+
+export type EmploymentContractScalarFieldEnum = (typeof EmploymentContractScalarFieldEnum)[keyof typeof EmploymentContractScalarFieldEnum]
+
+
+export const SensitiveAccessLogScalarFieldEnum = {
+  id: 'id',
+  organizationId: 'organizationId',
+  actorAccountId: 'actorAccountId',
+  employeeId: 'employeeId',
+  action: 'action',
+  fields: 'fields',
+  createdAt: 'createdAt'
+} as const
+
+export type SensitiveAccessLogScalarFieldEnum = (typeof SensitiveAccessLogScalarFieldEnum)[keyof typeof SensitiveAccessLogScalarFieldEnum]
+
+
 export const SortOrder = {
   asc: 'asc',
   desc: 'desc'
@@ -111,10 +181,35 @@ export const SortOrder = {
 export type SortOrder = (typeof SortOrder)[keyof typeof SortOrder]
 
 
+export const NullableJsonNullValueInput = {
+  DbNull: DbNull,
+  JsonNull: JsonNull
+} as const
+
+export type NullableJsonNullValueInput = (typeof NullableJsonNullValueInput)[keyof typeof NullableJsonNullValueInput]
+
+
 export const QueryMode = {
   default: 'default',
   insensitive: 'insensitive'
 } as const
 
 export type QueryMode = (typeof QueryMode)[keyof typeof QueryMode]
+
+
+export const NullsOrder = {
+  first: 'first',
+  last: 'last'
+} as const
+
+export type NullsOrder = (typeof NullsOrder)[keyof typeof NullsOrder]
+
+
+export const JsonNullValueFilter = {
+  DbNull: DbNull,
+  JsonNull: JsonNull,
+  AnyNull: AnyNull
+} as const
+
+export type JsonNullValueFilter = (typeof JsonNullValueFilter)[keyof typeof JsonNullValueFilter]
 

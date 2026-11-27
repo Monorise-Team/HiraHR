@@ -19,13 +19,15 @@ import {
   type CommandPaletteItem,
   type ShortcutHelpCategory,
 } from "@monorise-team/ui";
-import { CalendarDays, Contact, Keyboard, LogOut, Palette, RefreshCw, UserRound, Users } from "lucide-react";
+import type { Capabilities } from "@hirahr/client";
+import { Briefcase, CalendarDays, Contact, Keyboard, LogOut, Palette, RefreshCw, UserRound, Users } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { VIEW_HASHES, type AppView } from "./app-views";
 
 export interface HiraHRShellProps {
   organizationName: string;
   personName: string;
+  capabilities: Capabilities;
   view: AppView;
   busy: boolean;
   actionError: string | null;
@@ -43,6 +45,7 @@ export interface HiraHRShellProps {
 export function HiraHRShell({
   organizationName,
   personName,
+  capabilities,
   view,
   busy,
   actionError,
@@ -85,6 +88,17 @@ export function HiraHRShell({
         keywords: ["ludzie", "pracownicy", "kartoteki", "kadry", "people"],
         onSelect: () => onNavigate("people"),
       },
+      ...(capabilities.manageSettings
+        ? [
+            {
+              id: "go-positions",
+              label: "Stanowiska",
+              icon: <Briefcase size={16} aria-hidden />,
+              keywords: ["stanowiska", "ustawienia", "katalog", "positions"],
+              onSelect: () => onNavigate("positions"),
+            },
+          ]
+        : []),
       {
         id: "go-leave",
         label: "Urlopy",
@@ -134,7 +148,7 @@ export function HiraHRShell({
       { id: "go", label: "Przejdź do", items: goItems },
       { id: "actions", label: "Działania", items: actionItems },
     ];
-  }, [busy, onNavigate, onRefresh, onSignOut]);
+  }, [busy, capabilities.manageSettings, onNavigate, onRefresh, onSignOut]);
 
   const shortcutCategories = useMemo<ShortcutHelpCategory[]>(
     () => [
@@ -172,18 +186,28 @@ export function HiraHRShell({
             label="Mój profil"
             active={view === "profile"}
           />
-          <SidebarLink
-            href={VIEW_HASHES.people}
-            icon={<Users aria-hidden />}
-            label="Ludzie"
-            active={view === "people"}
-          />
+          {capabilities.readEmployees ? (
+            <SidebarLink
+              href={VIEW_HASHES.people}
+              icon={<Users aria-hidden />}
+              label="Ludzie"
+              active={view === "people" || view === "person"}
+            />
+          ) : null}
           <SidebarLink
             href={VIEW_HASHES.leave}
             icon={<CalendarDays aria-hidden />}
             label="Urlopy"
             active={view === "leave"}
           />
+          {capabilities.manageSettings ? (
+            <SidebarLink
+              href={VIEW_HASHES.positions}
+              icon={<Briefcase aria-hidden />}
+              label="Stanowiska"
+              active={view === "positions"}
+            />
+          ) : null}
         </SidebarNav>
       </SidebarShell>
 
