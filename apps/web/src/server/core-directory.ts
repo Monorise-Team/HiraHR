@@ -32,6 +32,10 @@ export interface OrganizationDirectory {
   readonly people: ReadonlyMap<string, DirectoryPerson>;
   readonly unitsByEmployee: ReadonlyMap<string, readonly string[]>;
   readonly peopleByAccount: ReadonlyMap<string, DirectoryPerson>;
+  /** Liderzy jednostek (rola `LEADER` w członkostwie Core), np. adresaci e-maili o wnioskach urlopowych. */
+  readonly leadersByUnit: ReadonlyMap<string, readonly string[]>;
+  /** Efektywny tygodniowy wymiar pracy z Core (z domyślnym wymiarem firmy). */
+  readonly scheduleByEmployee: ReadonlyMap<string, Partial<Record<1 | 2 | 3 | 4 | 5 | 6 | 7, number>> | null>;
 }
 
 interface CacheEntry {
@@ -64,6 +68,8 @@ async function loadDirectory(
   const people = new Map<string, DirectoryPerson>();
   const peopleByAccount = new Map<string, DirectoryPerson>();
   const units = new Map<string, string[]>();
+  const leaders = new Map<string, string[]>();
+  const schedules = new Map<string, Partial<Record<1 | 2 | 3 | 4 | 5 | 6 | 7, number>> | null>();
 
   for await (const employee of paginate(core.listProductDirectoryEmployees, {
     path: { productKey: HIRAHR_PERMISSIONS.product },
@@ -78,6 +84,7 @@ async function loadDirectory(
       status: employee.status,
     };
     people.set(employee.id, person);
+    schedules.set(employee.id, employee.effectiveWorkSchedule ?? null);
     if (employee.accountId) peopleByAccount.set(employee.accountId, person);
     if (people.size >= DIRECTORY_MAX_PAGES * 100) {
       console.warn("[hirahr.directory] Katalog firmy przekracza limit pracowników; lista jest niepełna");
@@ -93,13 +100,18 @@ async function loadDirectory(
     const list = units.get(member.employeeId) ?? [];
     if (!list.includes(member.unitId)) list.push(member.unitId);
     units.set(member.employeeId, list);
+    if (member.role === "LEADER") {
+      const unitLeaders = leaders.get(member.unitId) ?? [];
+      if (!unitLeaders.includes(member.employeeId)) unitLeaders.push(member.employeeId);
+      leaders.set(member.unitId, unitLeaders);
+    }
     if (++memberships >= DIRECTORY_MAX_PAGES * 100 * 4) {
       console.warn("[hirahr.directory] Katalog firmy przekracza limit członkostw; lista jest niepełna");
       break;
     }
   }
 
-  return { people, unitsByEmployee: units, peopleByAccount };
+  return { people, unitsByEmployee: units, peopleByAccount, leadersByUnit: leaders, scheduleByEmployee: schedules };
 }
 
 /**

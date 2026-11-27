@@ -30,6 +30,15 @@ Wszystkie z `ENABLE` + `FORCE ROW LEVEL SECURITY` i polityką `organization_isol
 
 Kolumny `*_encrypted` mają CHECK na format szyfrogramu (`v1.<klucz>.<iv>.<szyfrogram>.<znacznik>`), więc jawna wartość nie przejdzie. Szyfrowanie: `apps/web/src/server/field-encryption.ts` (AES-256-GCM, losowe IV, AAD = firma, rekord i pole; klucze `HIRAHR_FIELD_ENCRYPTION_KEYS` w formacie `id:base64`, pierwszy szyfruje, wszystkie odszyfrowują; lokalnie tworzy go `pnpm setup:env`).
 
+## Tabele etapu 2: urlopy (`20261128090000_leave`)
+
+Migracja włącza rozszerzenie `btree_gist` (EXCLUDE łączy równość z nakładaniem się zakresów dat). Obie tabele mają `ENABLE` + `FORCE ROW LEVEL SECURITY` z polityką `organization_isolation`; rola aplikacji nie ma `DELETE` (wnioski się wycofuje albo odrzuca, salda nadpisuje).
+
+| Tabela               | Prawa `hira_hr_app`      | Przeznaczenie                                                                                                                                                                                                                                                                                         |
+| -------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `leave_entitlements` | `SELECT, INSERT, UPDATE` | Saldo na rok (klucz: firma, pracownik, rok): podstawa 20/26, wymiar, urlop zaległy, uwagi. CHECK: rok 2000–2100, podstawa 20 albo 26, dni 0–100.                                                                                                                                                      |
+| `leave_requests`     | `SELECT, INSERT, UPDATE` | Wnioski i wpisy nieobecności z liczbą dni pracy policzoną przy złożeniu. CHECK: koniec po początku, 1–366 dni pracy, urlop wypoczynkowy i na żądanie w jednym roku, decyzja ma autora i czas. `leave_requests_no_overlap`: aktywne (oczekujące i zaakceptowane) wpisy jednej osoby się nie nakładają. |
+
 ## Funkcje pomocnicze RLS i `withUser`
 
 Migracja początkowa definiuje dwie stabilne funkcje SQL odczytujące zmienne lokalne transakcji:

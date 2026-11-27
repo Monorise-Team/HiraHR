@@ -76,3 +76,14 @@ export type EmploymentContract = Prisma.EmploymentContractModel
  * Dziennik dostępu do danych wrażliwych: tylko dopisywanie (rola aplikacji ma SELECT i INSERT).
  */
 export type SensitiveAccessLog = Prisma.SensitiveAccessLogModel
+/**
+ * Model LeaveEntitlement
+ * Roczne saldo urlopu wypoczynkowego pracownika (wymiar, urlop zaległy z poprzedniego roku i uwagi kadr).
+ */
+export type LeaveEntitlement = Prisma.LeaveEntitlementModel
+/**
+ * Model LeaveRequest
+ * Wniosek albo wpis nieobecności. Dni pracy liczone przy złożeniu (wymiar pracy z Core i polskie święta).
+ * Aktywne (oczekujące i zaakceptowane) nieobecności jednej osoby nie mogą się nakładać (EXCLUDE w migracji).
+ */
+export type LeaveRequest = Prisma.LeaveRequestModel

@@ -38,6 +38,21 @@ Listy mają stronicowanie kursorem (`limit` 1–100, `cursor` z `meta.nextCursor
 | `POST /api/v1/positions`, `PATCH /api/v1/positions/{positionId}` | `settings.manage`                                                         | Nowe stanowisko, zmiana nazwy, archiwizacja; aktywna nazwa unikalna w firmie (`409`).                                                                                                                                                      |
 | `GET /api/v1/units`                                              | sesja przeglądarki                                                        | Aktywne jednostki z Core (nazwy do filtrów).                                                                                                                                                                                               |
 
+## Trasy etapu 2: urlopy i nieobecności (ADR-0104)
+
+Dni liczone w dniach pracy (wymiar pracy z Core i polskie święta). Listy mają stronicowanie kursorem. Osoba spoza zasięgu dostaje `404`; osoba, której kartę widać, ale bez praw do urlopów, `403`.
+
+| Metoda i ścieżka                                            | Kto                                                                                        | Opis                                                                                                                                                                                  |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/v1/leave/requests`                                | sama osoba; z `employeeId` rozpatrujący i kadry; z `approvals=true` `leave.approve/manage` | Własne wnioski, wnioski osoby (od najnowszych) albo oczekujące do rozpatrzenia (od najbliższych, bez własnych). Zwolnienie lekarskie widzą tylko sama osoba i kadry w zakresie firmy. |
+| `POST /api/v1/leave/requests`                               | `leave.request` za siebie; `leave.manage` za osobę; zwolnienie: `leave.manage` w firmie    | Wniosek „oczekuje” albo wpis kadr „zaakceptowany”. Saldo, limit 4 dni na żądanie i nakładanie się sprawdzane pod blokadą (`409`); brak salda na rok i same dni wolne: `422`.          |
+| `POST /api/v1/leave/requests/{requestId}/decision`          | `leave.approve` albo `leave.manage` obejmujące osobę, nigdy własny                         | `APPROVE` albo `REJECT` z uzasadnieniem; tylko oczekujący wniosek (`409`).                                                                                                            |
+| `POST /api/v1/leave/requests/{requestId}/cancel`            | sama osoba (oczekujący albo przed początkiem urlopu) albo kadry                            | Wycofanie; wpis zostaje w historii.                                                                                                                                                   |
+| `GET /api/v1/leave/calendar`                                | dostęp do produktu                                                                         | Nieobecności w okresie do 62 dni (`from`, `to`, `unitId`); rodzaj i oczekujące tylko przy pełnym wglądzie, współpracownicy z jednostki widzą zaakceptowane bez rodzaju.               |
+| `GET /api/v1/leave/working-days`                            | sama osoba albo kadry obejmujące osobę                                                     | Podgląd liczby dni pracy i świąt w okresie.                                                                                                                                           |
+| `GET /api/v1/people/{employeeId}/leave-balance`             | sama osoba, rozpatrujący i kadry                                                           | Saldo w roku (`year`), podpowiedź wymiaru z etatu i `access` (`canRequest`, `canManage`, `canEnterSick`) dla przycisków.                                                              |
+| `PUT /api/v1/people/{employeeId}/leave-entitlements/{year}` | `leave.manage` obejmujące osobę                                                            | Podstawa 20/26, wymiar na rok, urlop zaległy i uwagi.                                                                                                                                 |
+
 ## Katalog tras i OpenAPI 3.1
 
 - Jednym źródłem prawdy dla OpenAPI jest `apps/web/src/server/routes.ts` połączony ze schematami Zod z `packages/contracts/src/index.ts`.
@@ -49,7 +64,8 @@ Listy mają stronicowanie kursorem (`limit` 1–100, `cursor` z `meta.nextCursor
 
 - `packages/contracts`: wspólne schematy Zod, `ApiErrorResponse`, `apiSuccessSchema`, `Health`, `Capabilities`, `Me` oraz `permissions.ts` (`HIRAHR_PERMISSIONS`, `HIRAHR_PERMISSION_MANIFEST`, `HIRAHR_ROLE_TEMPLATES`).
 - `packages/contracts/src/people.ts`: schematy kartoteki, walidacja `isValidPesel`, `peselBirthDate`, `isValidIban`, `normalizeIban`, reguły umów `contractViolations`.
-- `packages/client`: `createClient({ baseUrl, getToken, fetch })` z metodami `session.*`, `people.*` (lista, karta, zmiana, dane wrażliwe, dziennik, nowa umowa), `contracts.*`, `positions.*` i `units.list()`; listy zwracają `{ items, nextCursor }`, a błędy `ApiError`.
+- `packages/contracts/src/leave.ts`: rodzaje i stany nieobecności, saldo, wniosek, kalendarz, zapytania i reguły (koniec po początku, urlop z puli w jednym roku, najwyżej rok w jednym wpisie, kalendarz do 62 dni).
+- `packages/client`: `createClient({ baseUrl, getToken, fetch })` z metodami `session.*`, `people.*` (lista, karta, zmiana, dane wrażliwe, dziennik, nowa umowa), `contracts.*`, `positions.*`, `units.list()` i `leave.*` (wnioski, decyzja, wycofanie, kalendarz, dni pracy, saldo, ustalenie salda); listy zwracają `{ items, nextCursor }`, a błędy `ApiError`.
 
 ## Zestawy testów
 
@@ -66,4 +82,6 @@ Testy bez bazy danych (działają z atrapą `createFakeCore` z `@monorise-team/t
 
 - `apps/web/test/people-helpers.test.ts`: szyfrowanie AES-256-GCM (kontekst AAD, podmiana szyfrogramu, wymiana klucza), zasięg kartotek, wyszukiwanie.
 
-Testy wymagające PostgreSQL: `packages/db/test/rls.test.ts` (także RLS, CHECK i dziennik tylko do dopisywania w tabelach kartoteki), `apps/web/test/tenant-isolation.test.ts` oraz `apps/web/test/people-api.test.ts` (trasy kartoteki na prawdziwych handlerach i bazie z atrapą Core).
+- `apps/web/test/polish-calendar.test.ts`: święta i Wielkanoc, dni pracy z wymiaru pracy, podpowiedź wymiaru urlopu z etatu, formaty dat i dni w interfejsie.
+
+Testy wymagające PostgreSQL: `packages/db/test/rls.test.ts` (także RLS, CHECK i dziennik tylko do dopisywania w tabelach kartoteki oraz RLS, brak `DELETE`, EXCLUDE i CHECK w tabelach urlopów), `apps/web/test/tenant-isolation.test.ts`, `apps/web/test/people-api.test.ts` (trasy kartoteki na prawdziwych handlerach i bazie z atrapą Core) oraz `apps/web/test/leave-api.test.ts` (saldo, wnioski i akceptacja, zwolnienie lekarskie, kalendarz, dni pracy z wymiaru, dwa równoczesne wnioski, rozpoznanie błędu EXCLUDE).

@@ -37,6 +37,21 @@ Core jest źródłem tożsamości, pracowników, jednostek, przełożonych i wym
 - **Serwisy:** `people-service.ts` (lista, karta, kartoteka, dane wrażliwe z dziennikiem, umowy, jednostki), `positions-service.ts`, `pagination.ts`.
 - **Interfejs:** `components/PeopleView.tsx` (lista z wyszukiwaniem i filtrem jednostki), `components/PersonView.tsx` (karta, także „Mój profil”) z `ContractsSection.tsx` i `SensitiveSection.tsx` (dane ukryte do kliknięcia „Pokaż”, dziennik), `components/PositionsView.tsx`; pomocnicze `people-ui.ts` i `api-errors.ts`. Trasy widoków: `#moj-profil`, `#ludzie`, `#osoba/<id>`, `#urlopy`, `#stanowiska`, `#wyglad`.
 
+## Urlopy i nieobecności (etap 2)
+
+- **Kalendarz pracy (`src/lib/polish-calendar.ts`, wspólny dla serwera i interfejsu):** 14 polskich dni ustawowo wolnych (10 stałych z Wigilią od 2025 roku, Wielkanoc z algorytmu Meeusa, Poniedziałek Wielkanocny, Zielone Świątki, Boże Ciało) i `countWorkingDays(from, to, schedule)`: dzień pracy to dzień z wymiarem pracy z Core większym od zera, który nie jest świętem; bez wymiaru poniedziałek–piątek. Ten sam sposób liczenia co w TimoTime.
+- **Katalog Core:** `core-directory.ts` trzyma też `scheduleByEmployee` (`effectiveWorkSchedule`, minuty na dzień tygodnia ISO) i `leadersByUnit` (członkostwa z rolą `LEADER`, przyszli adresaci e-maili).
+- **Dostęp (`src/server/leave-service.ts`, `leaveAccessFor`):**
+  - sama osoba widzi swoje saldo i wnioski bez ról; składa wnioski z `leave.request` (status „oczekuje”),
+  - `leave.approve` obejmujące osobę: wgląd i decyzja o oczekujących wnioskach, nigdy własnych,
+  - `leave.manage` obejmujące osobę (kadry): saldo na rok, wpis za osobę (od razu zaakceptowany), wycofanie każdego aktywnego wpisu, decyzje,
+  - zwolnienie lekarskie (dana o zdrowiu) wpisują i widzą tylko kadry z `leave.manage` w zakresie całej firmy oraz sama osoba; inni widzą je jako „Nieobecność” bez rodzaju i uwag, a na liście wniosków osoby go nie widzą,
+  - kalendarz zespołu: pełny wgląd (rodzaj, oczekujące) jak wyżej, a osoby z tych samych jednostek i z `employees.read` widzą tylko zaakceptowane nieobecności bez rodzaju.
+- **Saldo:** wymiar + urlop zaległy − wykorzystane (zaakceptowane) − zaplanowane (oczekujące) dla urlopu wypoczynkowego i na żądanie w danym roku. Podpowiedź wymiaru: podstawa 20/26 × etat obecnej umowy o pracę, w górę do pełnego dnia (art. 154 § 2 KP). Urlop na żądanie najwyżej 4 dni w roku (art. 167² KP), urlop z puli nie przechodzi przez przełom roku.
+- **Wyścigi:** tworzenie wniosku, decyzja i zmiana salda biorą blokadę transakcji jednej osoby (`pg_advisory_xact_lock`); nakładanie się aktywnych wpisów blokuje też baza (EXCLUDE), a `isOverlapViolation` zamienia ten błąd na `409`.
+- **Interfejs:** `components/LeaveView.tsx` (widok `#urlopy`: moje saldo z wyborem roku, do akceptacji, moje wnioski, kalendarz), `components/LeaveParts.tsx` (saldo, lista wniosków z akcjami z `access`, okno wniosku z podglądem dni pracy, okno salda z podpowiedzią z etatu), `components/TeamCalendar.tsx` (miesiąc, filtr jednostki, weekendy i święta), `components/LeaveSection.tsx` (urlopy na karcie osoby i w „Mój profil”: saldo, ostatnie wnioski, „Ustal saldo” i „Wpisz nieobecność” dla kadr); pomocnicze `leave-ui.ts`.
+- **Jeszcze nie ma (etap 2b):** e-maile przez Core do liderów jednostek i do składającego (kategoria powiadomień `hirahr.leave` i zakres `core:notifications.send` dla `hirahr-web` wymagają zmiany w MonoriseCore).
+
 ## Uprawnienia, role i kanał zdarzeń
 
 - **Deklaracja:** `packages/contracts/src/permissions.ts` (`definePermissions("hirahr", ...)`):
@@ -60,7 +75,7 @@ Core jest źródłem tożsamości, pracowników, jednostek, przełożonych i wym
 - Korzysta wyłącznie z `@monorise-team/ui` i tokenów `@monorise-team/tokens` (ADR-0091).
 - `HiraHRApp.tsx`: zarządza stanem sesji (`LoadingView`, `SignedOutView` z bezpiecznym powrotem `sanitizeReturnTo`, `LoadErrorView`, `NoAccessView`) i wyborem widoku z fragmentu URL (`app-views.ts`: `#moj-profil`, `#ludzie`, `#urlopy`, `#wyglad`). Do aplikacji wystarcza dostęp do produktu (samoobsługa).
 - `HiraHRShell.tsx`: `AppShell`, zwijany `SidebarShell`, paleta poleceń `⌘K` (`CommandPalette`), pomoc skrótów (`ShortcutsHelp` pod `?`) i skróty `g p` (Mój profil), `g l` (Ludzie), `g u` (Urlopy), `g w` (Wygląd).
-- „Ludzie” widać z `employees.read`, „Stanowiska” z `settings.manage`; „Urlopy” to na razie zapowiedź etapu 2, a „Wygląd” (`AppearanceView.tsx`) udostępnia ustawienia motywu (`AppearanceControls`).
+- „Ludzie” widać z `employees.read`, „Stanowiska” z `settings.manage`, „Urlopy” każda osoba z dostępem do produktu, a „Wygląd” (`AppearanceView.tsx`) udostępnia ustawienia motywu (`AppearanceControls`).
 
 ## Polecenia robocze
 

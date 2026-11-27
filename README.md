@@ -7,8 +7,8 @@ Kadry Monorise w przeglądarce: kartoteka pracowników, umowy i stanowiska, urlo
 | Etap | Zakres                                                                                              | Stan    |
 | ---- | --------------------------------------------------------------------------------------------------- | ------- |
 | 0    | szkielet: logowanie przez Core, `/me`, uprawnienia i role, kanał zdarzeń, powłoka aplikacji, strona | gotowy  |
-| 1    | kartoteka: dane kadrowe, umowy z historią, stanowiska, dane wrażliwe szyfrowane, dziennik dostępu   | w toku  |
-| 2    | urlopy i nieobecności: salda 20/26 dni, wnioski, akceptacja kierownika, kalendarz zespołu           | później |
+| 1    | kartoteka: dane kadrowe, umowy z historią, stanowiska, dane wrażliwe szyfrowane, dziennik dostępu   | gotowy  |
+| 2    | urlopy i nieobecności: salda 20/26 dni, wnioski, akceptacja kierownika, kalendarz zespołu           | w toku  |
 | 3    | dokumenty: akta osobowe w częściach A–E, magazyn zgodny z S3, terminy przechowywania                | później |
 
 ## Części

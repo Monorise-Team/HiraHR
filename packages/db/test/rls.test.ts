@@ -283,3 +283,137 @@ describe("RLS tabel kartoteki (etap 1, ADR-0104)", () => {
     ).rejects.toThrow();
   });
 });
+
+describe("RLS i ograniczenia tabel urlopów (etap 2, ADR-0104)", () => {
+  const STAGE2_TABLES = ["leave_entitlements", "leave_requests"] as const;
+  const annaEmployee = uuidv7();
+
+  function leave(
+    actor: Actor,
+    data: {
+      start: string;
+      end: string;
+      status?: "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED";
+      type?: "VACATION" | "SICK";
+    },
+  ) {
+    const decided = data.status === "APPROVED" || data.status === "REJECTED";
+    return withUser(db, actor, (tx) =>
+      tx.leaveRequest.create({
+        data: {
+          id: uuidv7(),
+          organizationId: actor.organizationId,
+          employeeId: annaEmployee,
+          type: data.type ?? "VACATION",
+          startDate: new Date(data.start),
+          endDate: new Date(data.end),
+          workingDays: 1,
+          status: data.status ?? "PENDING",
+          requestedByAccountId: actor.accountId,
+          ...(decided ? { decidedByAccountId: actor.accountId, decidedAt: new Date() } : {}),
+        },
+      }),
+    );
+  }
+
+  it("obie tabele mają włączone i wymuszone RLS, a rola aplikacji nie może usuwać wierszy", async () => {
+    const rows = await db.$queryRaw<{ relname: string; relrowsecurity: boolean; relforcerowsecurity: boolean }[]>`
+      SELECT relname, relrowsecurity, relforcerowsecurity FROM pg_class
+      WHERE relnamespace = 'public'::regnamespace AND relname = ANY(${[...STAGE2_TABLES]})
+      ORDER BY relname
+    `;
+    expect(rows).toHaveLength(STAGE2_TABLES.length);
+    for (const row of rows) expect(row).toMatchObject({ relrowsecurity: true, relforcerowsecurity: true });
+
+    const privileges = await db.$queryRaw<{ table: string; canDelete: boolean; canTruncate: boolean }[]>`
+      SELECT relname AS "table",
+             has_table_privilege(current_user, oid, 'DELETE') AS "canDelete",
+             has_table_privilege(current_user, oid, 'TRUNCATE') AS "canTruncate"
+      FROM pg_class WHERE relnamespace = 'public'::regnamespace AND relname = ANY(${[...STAGE2_TABLES]})
+    `;
+    for (const row of privileges) expect(row).toMatchObject({ canDelete: false, canTruncate: false });
+  });
+
+  it("izoluje salda i wnioski między firmami, a bez kontekstu nie zwraca nic", async () => {
+    await withUser(db, anna, (tx) =>
+      tx.leaveEntitlement.create({
+        data: {
+          organizationId: acme,
+          employeeId: annaEmployee,
+          year: 2027,
+          entitledDays: 26,
+          updatedByAccountId: anna.accountId,
+        },
+      }),
+    );
+    await leave(anna, { start: "2027-02-01", end: "2027-02-05" });
+    expect(await withUser(db, anna, (tx) => tx.leaveEntitlement.count())).toBe(1);
+    expect(await withUser(db, anna, (tx) => tx.leaveRequest.count())).toBe(1);
+    expect(await withUser(db, celina, (tx) => tx.leaveEntitlement.count())).toBe(0);
+    expect(await withUser(db, celina, (tx) => tx.leaveRequest.count())).toBe(0);
+    expect(await db.leaveRequest.count()).toBe(0);
+    await expect(
+      withUser(db, anna, (tx) =>
+        tx.leaveEntitlement.create({
+          data: {
+            organizationId: globex,
+            employeeId: annaEmployee,
+            year: 2027,
+            entitledDays: 20,
+            updatedByAccountId: anna.accountId,
+          },
+        }),
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("aktywne nieobecności jednej osoby nie mogą się nakładać, odrzucone i wycofane mogą", async () => {
+    await leave(anna, { start: "2027-03-01", end: "2027-03-05", status: "APPROVED" });
+    await expect(leave(anna, { start: "2027-03-05", end: "2027-03-08" })).rejects.toThrow(
+      /23P01|no_overlap|exclusion/i,
+    );
+    await expect(
+      leave(anna, { start: "2027-03-02", end: "2027-03-03", status: "APPROVED", type: "SICK" }),
+    ).rejects.toThrow();
+    await leave(anna, { start: "2027-03-02", end: "2027-03-03", status: "REJECTED" });
+    await leave(anna, { start: "2027-03-04", end: "2027-03-04", status: "CANCELLED" });
+    // Ta sama osoba w innej firmie to inny wiersz katalogu, więc ograniczenie jej nie dotyczy
+    await leave(celina, { start: "2027-03-01", end: "2027-03-05" });
+  });
+
+  it("odrzuca urlop wypoczynkowy przez przełom roku i decyzję bez autora (CHECK)", async () => {
+    await expect(leave(anna, { start: "2027-12-30", end: "2028-01-03" })).rejects.toThrow();
+    await leave(anna, { start: "2027-12-30", end: "2028-01-03", type: "SICK", status: "APPROVED" });
+    await expect(
+      withUser(db, anna, (tx) =>
+        tx.leaveRequest.create({
+          data: {
+            id: uuidv7(),
+            organizationId: acme,
+            employeeId: annaEmployee,
+            type: "VACATION",
+            startDate: new Date("2027-05-03"),
+            endDate: new Date("2027-05-04"),
+            workingDays: 1,
+            status: "APPROVED",
+            requestedByAccountId: anna.accountId,
+          },
+        }),
+      ),
+    ).rejects.toThrow();
+    await expect(
+      withUser(db, anna, (tx) =>
+        tx.leaveEntitlement.create({
+          data: {
+            organizationId: acme,
+            employeeId: annaEmployee,
+            year: 2028,
+            baseDays: 24,
+            entitledDays: 24,
+            updatedByAccountId: anna.accountId,
+          },
+        }),
+      ),
+    ).rejects.toThrow();
+  });
+});

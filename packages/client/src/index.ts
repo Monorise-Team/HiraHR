@@ -6,7 +6,15 @@ import {
   API_PREFIX,
   type ApiErrorBody,
   type ApiResponse,
+  type CalendarAbsence,
   type CreateContractInput,
+  type CreateLeaveRequestInput,
+  type DecideLeaveRequestInput,
+  type LeaveBalance,
+  type LeaveRequest,
+  type LeaveStatus,
+  type UpdateLeaveEntitlementInput,
+  type WorkingDays,
   type CreatePositionInput,
   type CursorQuery,
   type EmploymentContract,
@@ -141,6 +149,27 @@ export function createClient({ baseUrl = "", getToken, fetch: fetchImpl = fetch 
     },
     units: {
       list: (query: CursorQuery = {}) => requestPage<Unit>(`/units${queryString(query)}`),
+    },
+    leave: {
+      /** Własne wnioski, wnioski osoby (`employeeId`) albo oczekujące do rozpatrzenia (`approvals: true`). */
+      requests: (
+        query: { employeeId?: string; approvals?: boolean; status?: LeaveStatus; limit?: number; cursor?: string } = {},
+      ) =>
+        requestPage<LeaveRequest>(
+          `/leave/requests${queryString({ ...query, approvals: query.approvals ? "true" : undefined })}`,
+        ),
+      create: (input: CreateLeaveRequestInput) => request<LeaveRequest>("POST", "/leave/requests", input),
+      decide: (requestId: string, input: DecideLeaveRequestInput) =>
+        request<LeaveRequest>("POST", `/leave/requests/${segment(requestId)}/decision`, input),
+      cancel: (requestId: string) => request<LeaveRequest>("POST", `/leave/requests/${segment(requestId)}/cancel`),
+      calendar: (query: { from: string; to: string; unitId?: string; limit?: number; cursor?: string }) =>
+        requestPage<CalendarAbsence>(`/leave/calendar${queryString(query)}`),
+      workingDays: (query: { from: string; to: string; employeeId?: string }) =>
+        request<WorkingDays>("GET", `/leave/working-days${queryString(query)}`),
+      balance: (employeeId: string, year?: number) =>
+        request<LeaveBalance>("GET", `/people/${segment(employeeId)}/leave-balance${queryString({ year })}`),
+      updateEntitlement: (employeeId: string, year: number, input: UpdateLeaveEntitlementInput) =>
+        request<LeaveBalance>("PUT", `/people/${segment(employeeId)}/leave-entitlements/${year}`, input),
     },
     session: {
       me: () => request<Me>("GET", "/me"),

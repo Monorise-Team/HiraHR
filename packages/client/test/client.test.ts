@@ -51,6 +51,23 @@ describe("klient API HiraHR", () => {
     expect(seen.init?.credentials).toBe("omit");
   });
 
+  it("buduje adresy urlopów: wnioski do rozpatrzenia, kalendarz, saldo i decyzję", async () => {
+    const seen: { url?: string; init?: RequestInit } = {};
+    const client = createClient({ fetch: fakeFetch(200, { data: [], meta: { nextCursor: null }, error: null }, seen) });
+    await client.leave.requests({ approvals: true, limit: 20 });
+    expect(seen.url).toBe("/api/v1/leave/requests?approvals=true&limit=20");
+    await client.leave.requests();
+    expect(seen.url).toBe("/api/v1/leave/requests");
+    await client.leave.calendar({ from: "2026-08-01", to: "2026-08-31" });
+    expect(seen.url).toBe("/api/v1/leave/calendar?from=2026-08-01&to=2026-08-31");
+    await client.leave.balance("emp-1", 2026);
+    expect(seen.url).toBe("/api/v1/people/emp-1/leave-balance?year=2026");
+    await client.leave.decide("req-1", { decision: "APPROVE" });
+    expect(seen.url).toBe("/api/v1/leave/requests/req-1/decision");
+    expect(seen.init?.method).toBe("POST");
+    expect(seen.init?.body).toBe(JSON.stringify({ decision: "APPROVE" }));
+  });
+
   it("wylogowanie wysyła POST /api/auth/sign-out z ciasteczkiem i bez śledzenia przekierowań", async () => {
     const seen: { url?: string; init?: RequestInit } = {};
     const client = createClient({

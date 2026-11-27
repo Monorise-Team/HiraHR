@@ -57,7 +57,9 @@ export const ModelName = {
   Position: 'Position',
   EmployeeProfile: 'EmployeeProfile',
   EmploymentContract: 'EmploymentContract',
-  SensitiveAccessLog: 'SensitiveAccessLog'
+  SensitiveAccessLog: 'SensitiveAccessLog',
+  LeaveEntitlement: 'LeaveEntitlement',
+  LeaveRequest: 'LeaveRequest'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -171,6 +173,43 @@ export const SensitiveAccessLogScalarFieldEnum = {
 } as const
 
 export type SensitiveAccessLogScalarFieldEnum = (typeof SensitiveAccessLogScalarFieldEnum)[keyof typeof SensitiveAccessLogScalarFieldEnum]
+
+
+export const LeaveEntitlementScalarFieldEnum = {
+  organizationId: 'organizationId',
+  employeeId: 'employeeId',
+  year: 'year',
+  baseDays: 'baseDays',
+  entitledDays: 'entitledDays',
+  carriedOverDays: 'carriedOverDays',
+  notes: 'notes',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  updatedByAccountId: 'updatedByAccountId'
+} as const
+
+export type LeaveEntitlementScalarFieldEnum = (typeof LeaveEntitlementScalarFieldEnum)[keyof typeof LeaveEntitlementScalarFieldEnum]
+
+
+export const LeaveRequestScalarFieldEnum = {
+  id: 'id',
+  organizationId: 'organizationId',
+  employeeId: 'employeeId',
+  type: 'type',
+  startDate: 'startDate',
+  endDate: 'endDate',
+  workingDays: 'workingDays',
+  status: 'status',
+  note: 'note',
+  decisionNote: 'decisionNote',
+  requestedByAccountId: 'requestedByAccountId',
+  decidedByAccountId: 'decidedByAccountId',
+  decidedAt: 'decidedAt',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type LeaveRequestScalarFieldEnum = (typeof LeaveRequestScalarFieldEnum)[keyof typeof LeaveRequestScalarFieldEnum]
 
 
 export const SortOrder = {
