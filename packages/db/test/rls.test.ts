@@ -162,3 +162,124 @@ describe("RLS i uprawnienia roli aplikacji hira_hr_app (etap 0)", () => {
     await expect(db.$queryRaw`SELECT count(*) FROM public._prisma_migrations`).rejects.toThrow(/permission denied/);
   });
 });
+
+describe("RLS tabel kartoteki (etap 1, ADR-0104)", () => {
+  const STAGE1_TABLES = ["positions", "employee_profiles", "employment_contracts", "sensitive_access_log"] as const;
+  const annaEmployee = uuidv7();
+  const celinaEmployee = uuidv7();
+
+  it("wszystkie tabele kartoteki mają włączone i wymuszone RLS", async () => {
+    const rows = await db.$queryRaw<{ relname: string; relrowsecurity: boolean; relforcerowsecurity: boolean }[]>`
+      SELECT relname, relrowsecurity, relforcerowsecurity FROM pg_class
+      WHERE relnamespace = 'public'::regnamespace AND relname = ANY(${[...STAGE1_TABLES]})
+      ORDER BY relname
+    `;
+    expect(rows).toHaveLength(STAGE1_TABLES.length);
+    for (const row of rows) {
+      expect(row).toMatchObject({ relrowsecurity: true, relforcerowsecurity: true });
+    }
+  });
+
+  it("izoluje kartoteki i umowy między firmami, a bez kontekstu nie zwraca nic", async () => {
+    await withUser(db, anna, (tx) =>
+      tx.employeeProfile.create({ data: { organizationId: acme, employeeId: annaEmployee, personalPhone: "+48 600" } }),
+    );
+    await withUser(db, celina, (tx) =>
+      tx.employeeProfile.create({ data: { organizationId: globex, employeeId: celinaEmployee } }),
+    );
+    expect(await withUser(db, anna, (tx) => tx.employeeProfile.count())).toBe(1);
+    expect(await withUser(db, celina, (tx) => tx.employeeProfile.count())).toBe(1);
+    expect(await db.employeeProfile.count()).toBe(0);
+
+    await expect(
+      withUser(db, anna, (tx) => tx.employeeProfile.create({ data: { organizationId: globex, employeeId: uuidv7() } })),
+    ).rejects.toThrow();
+
+    // Umowa nie może wskazać stanowiska innej firmy (złożony klucz obcy)
+    const globexPosition = await withUser(db, celina, (tx) =>
+      tx.position.create({ data: { id: uuidv7(), organizationId: globex, name: "Księgowa" } }),
+    );
+    await expect(
+      withUser(db, anna, (tx) =>
+        tx.employmentContract.create({
+          data: {
+            id: uuidv7(),
+            organizationId: acme,
+            employeeId: annaEmployee,
+            type: "INDEFINITE",
+            startDate: new Date("2026-01-01"),
+            fteNumerator: 1,
+            fteDenominator: 1,
+            positionId: globexPosition.id,
+            createdByAccountId: anna.accountId,
+          },
+        }),
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("odrzuca jawne wartości w polach szyfrowanych i niespójne umowy (CHECK)", async () => {
+    await expect(
+      withUser(db, anna, (tx) =>
+        tx.employeeProfile.update({
+          where: { organizationId_employeeId: { organizationId: acme, employeeId: annaEmployee } },
+          data: { peselEncrypted: "90010112318" },
+        }),
+      ),
+    ).rejects.toThrow();
+    await expect(
+      withUser(db, anna, (tx) =>
+        tx.employmentContract.create({
+          data: {
+            id: uuidv7(),
+            organizationId: acme,
+            employeeId: annaEmployee,
+            type: "MANDATE",
+            startDate: new Date("2026-01-01"),
+            fteNumerator: 1,
+            fteDenominator: 2,
+            createdByAccountId: anna.accountId,
+          },
+        }),
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("dziennik dostępu jest tylko do dopisywania i zawsze w imieniu zalogowanej osoby", async () => {
+    const entry = await withUser(db, anna, (tx) =>
+      tx.sensitiveAccessLog.create({
+        data: {
+          id: uuidv7(),
+          organizationId: acme,
+          actorAccountId: anna.accountId,
+          employeeId: annaEmployee,
+          action: "READ",
+          fields: ["pesel"],
+        },
+      }),
+    );
+    await expect(
+      withUser(db, anna, (tx) =>
+        tx.sensitiveAccessLog.update({ where: { id: entry.id }, data: { fields: ["salary"] } }),
+      ),
+    ).rejects.toThrow();
+    await expect(
+      withUser(db, anna, (tx) => tx.sensitiveAccessLog.delete({ where: { id: entry.id } })),
+    ).rejects.toThrow();
+    // Wpis w imieniu innej osoby odrzuca polityka RLS
+    await expect(
+      withUser(db, anna, (tx) =>
+        tx.sensitiveAccessLog.create({
+          data: {
+            id: uuidv7(),
+            organizationId: acme,
+            actorAccountId: bartek.accountId,
+            employeeId: annaEmployee,
+            action: "READ",
+            fields: ["pesel"],
+          },
+        }),
+      ),
+    ).rejects.toThrow();
+  });
+});

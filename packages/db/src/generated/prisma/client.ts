@@ -56,3 +56,23 @@ export type EventFeedCursor = Prisma.EventFeedCursorModel
  * Zapis przetworzonych zdarzeń do deduplikacji po stronie odbiorcy (bez danych firmowych, bez RLS).
  */
 export type ProcessedEvent = Prisma.ProcessedEventModel
+/**
+ * Model Position
+ * Stanowisko z katalogu firmy (np. „Magazynierka”). Archiwizowane, nie usuwane, bo wskazują je umowy.
+ */
+export type Position = Prisma.PositionModel
+/**
+ * Model EmployeeProfile
+ * Kartoteka pracownika Core (`employeeId`): dane kadrowe spoza Core i zaszyfrowane dane wrażliwe.
+ */
+export type EmployeeProfile = Prisma.EmployeeProfileModel
+/**
+ * Model EmploymentContract
+ * Umowa pracownika z historią (kolejne wiersze). Wynagrodzenie jest daną wrażliwą (szyfrogram).
+ */
+export type EmploymentContract = Prisma.EmploymentContractModel
+/**
+ * Model SensitiveAccessLog
+ * Dziennik dostępu do danych wrażliwych: tylko dopisywanie (rola aplikacji ma SELECT i INSERT).
+ */
+export type SensitiveAccessLog = Prisma.SensitiveAccessLogModel
